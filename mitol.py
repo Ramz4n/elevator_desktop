@@ -26,6 +26,7 @@ from openpyxl import load_workbook
 import pymysql
 import sys
 import sqlite3
+from speech import Speech_recorder
 
 
 class Main(tk.Frame):
@@ -1471,7 +1472,7 @@ class Child(tk.Toplevel):
         self.text_entry_comment = tk.StringVar(value=self.rows[0]['комментарий'])
         self.entry_comment = tk.Entry(self, textvariable=self.text_entry_comment, font=font10)
         self.entry_comment.place(x=200, y=290)
-        btn_cancel = ttk.Button(self, text='Закрыть', command=self.destroy)
+        btn_cancel = ttk.Button(self, text='Отменить', command=self.destroy)
         btn_cancel.place(x=300, y=350)
         self.btn_ok = ttk.Button(self, text='Сохранить', command=self.save_and_close)
         self.btn_ok.place(x=200, y=350)
@@ -1813,32 +1814,45 @@ class Comment(tk.Toplevel):
         super().__init__()
         self.init_comm()
         self.view = app
+        self.speech_recorder = Speech_recorder()
 
     def init_comm(self):
         self.title('Комментировать')
-        self.geometry('350x150+400+300')
+        self.geometry('360x230+400+300')
         self.resizable(False, False)
-        label_comm = ttk.Label(self, text='Комментировать:')
-        label_comm.place(x=1, y=10)
         self.frame123 = tk.Frame(borderwidth=1)
         self.frame123.pack(side=tk.TOP)
-        self.entry_text123 = tk.StringVar()
-        self.entry123 = tk.Entry(self, textvariable=self.entry_text123, width=33)
-        self.entry123.place(x=110, y=10)
-        btn_cancel = ttk.Button(self, text='Закрыть', command=self.destroy)
-        btn_cancel.place(x=235, y=50)
-        btn_search = ttk.Button(self, text='Комментировать', command=self.save_and_close)
-        btn_search.place(x=110, y=50)
-        self.entry123.bind("<Button-3>", self.show_menu)
-        self.entry123.bind_all("<Control-v>", self.paste_text)
+        self.t = Text(self, height=10, width=30)
+        self.t.place(x=10, y=10)
+
+        self.btn_micro = ttk.Button(self, text='Сказать\U0001f3a4', command=self.on_microfon_button_click, width=12)
+        self.btn_micro.place(x=275, y=8)
+
+        btn_cancel = ttk.Button(self, text='Отменить', command=self.destroy)
+        btn_cancel.place(x=135, y=175)
+
+        btn_search = ttk.Button(self, text='Сохранить', command=self.save_and_close)
+        btn_search.place(x=10, y=175)
+
+        self.t.bind("<Button-3>", self.show_menu)
+        self.t.bind_all("<Control-v>", self.paste_text)
+
+
+    def on_microfon_button_click(self):
+        self.btn_micro.config(text='Говорите...')
+        self.update()
+        result = self.speech_recorder.speech()
+        self.t.insert(tk.END, result)
+        self.btn_micro.config(text='Сказать\U0001f3a4')
+        self.update()
 
     def save_and_close(self):
-        self.view.comment(self.entry123.get())
+        self.view.comment(self.t.get("1.0", tk.END).strip())
         self.destroy()
 
     def paste_text(self, event=None):
         text_to_paste = self.clipboard_get()
-        self.entry123.insert(tk.INSERT, text_to_paste)
+        self.t.insert(tk.INSERT, text_to_paste)
 
     def show_menu(self, event):
         # Создаем меню
