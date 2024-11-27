@@ -51,7 +51,7 @@ class Main(tk.Frame):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute('''select id, ФИО from workers where Должность="Диспетчер" order by ФИО''')
+                cursor.execute(f'''select id, ФИО from {table_workers} where Должность="Диспетчер" order by ФИО''')
                 data_workers = cursor.fetchall()
         except:
             mb.showerror("Ошибка","Нет подключения к базе данных")
@@ -59,8 +59,8 @@ class Main(tk.Frame):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''select w.ФИО from zayavki z
-                JOIN workers w ON z.id_диспетчер = w.id ORDER BY z.id DESC LIMIT 1''')
+                cursor.execute(f'''select w.ФИО from {table_zayavki} z
+                JOIN {table_workers} w ON z.id_диспетчер = w.id ORDER BY z.id DESC LIMIT 1''')
                 data_worker = cursor.fetchone()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -92,7 +92,7 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port,
                                          database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select id, город from goroda")
+                cursor.execute(f"select id, город from {table_goroda}")
                 data_towns = cursor.fetchall()
         except mariadb.Error as e:
             messagebox.showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -182,7 +182,7 @@ class Main(tk.Frame):
         frame5 = tk.Frame()
         label5 = tk.Label(toolbar7, borderwidth=1, width=14, relief="raised", text="Причина", font='Calibri 14 bold')
         label5.pack()
-        self.prichina = ['Неисправность', 'Застревание', 'Остановлен', 'Связь']
+        self.prichina = ['Неисправность', 'Застревание', 'Остановлен', 'Связь', 'Линейная']
         self.prich5 = tk.StringVar(value='?')
         for pr in self.prichina:
             lang_btn3 = tk.Radiobutton(toolbar7, text=pr, value=pr, variable=self.prich5, font='Calibri  13')
@@ -205,7 +205,7 @@ class Main(tk.Frame):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select id, ФИО from workers where Должность = 'Механик' order by ФИО")
+                cursor.execute(f"select id, ФИО from {table_workers} where Должность = 'Механик' order by ФИО")
                 self.data_meh = cursor.fetchall()
             for d in self.data_meh:
                 self.data_meh_name = f"{d['ФИО']}"
@@ -230,16 +230,17 @@ class Main(tk.Frame):
         # =================КНОПКИ========================================================
         tool3 = tk.Frame(toolbar, borderwidth=1, relief="raised")
         tool3.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
-        btn_refresh = tk.Button(tool3, text='Запущенные лифты', bg='#00AD0E', compound=tk.TOP,command=self.start_lift, width=19, font=helv36)
-        btn_refresh.pack(side=tk.BOTTOM)
-        btn_refresh = tk.Button(tool3, text='Остановленные лифты', bg='#FFB3AB', compound=tk.TOP,command=self.stop_lift, width=19, font=helv36)
-        btn_refresh.pack(side=tk.TOP)
-        btn_refresh = tk.Button(tool3, text='НЕ Закрытые заявки', bg='#4897FF', compound=tk.TOP,command=self.non_start_lift, width=19, font=helv36)
-        btn_refresh.pack(side=tk.BOTTOM)
+        btn_start = tk.Button(tool3, text='Запущенные лифты', bg='#00AD0E', compound=tk.TOP,command=self.start_lift, width=19, font=helv36)
+        btn_start.pack(side=tk.BOTTOM)
+        btn_stop = tk.Button(tool3, text='Остановленные лифты', bg='#FFB3AB', compound=tk.TOP,command=self.stop_lift, width=19, font=helv36)
+        btn_stop.pack(side=tk.TOP)
+        btn_open_ = tk.Button(tool3, text='НЕ Закрытые заявки', bg='#4897FF', compound=tk.TOP,command=self.non_start_lift, width=19, font=helv36)
+        btn_open_.pack(side=tk.BOTTOM)
         #=====================================================================================
-        tool4 = tk.Frame(toolbar, borderwidth=1, relief="raised")
+        tool4 = tk.Frame(toolbar)
         tool4.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
-        btn_refresh.pack(side=tk.BOTTOM)
+        tool5 = tk.Frame(toolbar, borderwidth=1, relief="raised")
+        tool5.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
         self.is_on = True
         self.enabled = IntVar()
         self.enabled.set(pc_id)
@@ -252,6 +253,12 @@ class Main(tk.Frame):
         self.off = PhotoImage(file="off.png")
         self.on_button = Button(tool4, image=self.off, bd=0, command=self.switch)
         self.on_button.pack()
+        btn_lineyka_close = tk.Button(tool5, text='Линейные закрытые', compound=tk.TOP,
+                              command=print(123), width=19, font=helv36)
+        btn_lineyka_close.pack(side=tk.BOTTOM)
+        btn_lineyka_open = tk.Button(tool5, text='Линейные открытые', compound=tk.TOP,
+                                command=self.non_start_line_lift, width=19, font=helv36)
+        btn_lineyka_open.pack(side=tk.BOTTOM)
         # === ПЕРЕЛИСТЫВАНИЕ БД ПО МЕСЯЦАМ=====================================================================
         self.months = ["Январь", "Февраль", "Март", "Апрель",
                        "Май", "Июнь", "Июль", "Август",
@@ -274,7 +281,7 @@ class Main(tk.Frame):
         style2.configure("mystyle.Treeview.Heading", font=('Helvetica', 12, 'bold'))
         style2.layout("mystyle.Treeview", [('mystyle.Treeview.treearea', {'sticky': 'nswe'})])
         self.tree2 = ttk.Treeview(self.label_info_bd, style="mystyle.Treeview", columns=('Город', 'Застр', 'Неиспр', 'Кол_во'),
-                                  height=7, show='headings')
+                                  height=12, show='headings')
         self.tree2.column('Город', width=115, anchor=tk.CENTER)
         self.tree2.column('Застр', width=120, anchor=tk.CENTER)
         self.tree2.column('Неиспр', width=145, anchor=tk.CENTER)
@@ -364,17 +371,17 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''
-                    SELECT street.улица,
-                           doma.номер AS дом,
-                           padik.Номер AS падик
-                    FROM goroda
-                    JOIN street ON goroda.id = street.id_город
-                    JOIN doma ON street.id = doma.id_улица
-                    JOIN lifts ON doma.id = lifts.id_дом
-                    JOIN padik ON lifts.id_подъезд = padik.id
-                    WHERE goroda.город = "{self.selected_city}"
-                    GROUP BY street.улица, doma.номер, padik.Номер
-                    ORDER BY street.улица, doma.номер, padik.Номер;''')
+                    SELECT {table_street}.улица,
+                           {table_doma}.номер AS дом,
+                           {table_padik}.Номер AS падик
+                    FROM {table_goroda}
+                    JOIN {table_street} ON {table_goroda}.id = {table_street}.id_город
+                    JOIN {table_doma} ON {table_street}.id = {table_doma}.id_улица
+                    JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
+                    JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                    WHERE {table_goroda}.город = "{self.selected_city}"
+                    GROUP BY {table_street}.улица, {table_doma}.номер, {table_padik}.Номер
+                    ORDER BY {table_street}.улица, {table_doma}.номер, {table_padik}.Номер;''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['улица']}, {d['дом']}, {d['падик']}"
@@ -440,13 +447,13 @@ class Main(tk.Frame):
                                        m.ФИО,
                                        FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS дата_запуска,
                                        комментарий
-                                FROM zayavki z
-                                JOIN workers w ON z.id_диспетчер = w.id
-                                JOIN goroda g ON z.id_город = g.id
-                                JOIN street s ON z.id_улица = s.id
-                                JOIN doma d ON z.id_дом = d.id
-                                JOIN padik p ON z.id_подъезд = p.id
-                                JOIN workers m ON z.id_механик = m.id
+                                FROM {table_zayavki} z
+                                JOIN {table_workers} w ON z.id_диспетчер = w.id
+                                JOIN {table_goroda} g ON z.id_город = g.id
+                                JOIN {table_street} s ON z.id_улица = s.id
+                                JOIN {table_doma} d ON z.id_дом = d.id
+                                JOIN {table_padik} p ON z.id_подъезд = p.id
+                                JOIN {table_workers} m ON z.id_механик = m.id
                                      where z.id=?''',
                                    (self.tree.set(self.tree.selection()[0], '#11'),))
                     rows = cursor.fetchall()
@@ -582,13 +589,13 @@ class Main(tk.Frame):
                                    FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                    комментарий,
                                    z.id
-                            FROM zayavki z
-                            JOIN workers w ON z.id_диспетчер = w.id
-                            JOIN goroda g ON z.id_город = g.id
-                            JOIN street s ON z.id_улица = s.id
-                            JOIN doma d ON z.id_дом = d.id
-                            JOIN padik p ON z.id_подъезд = p.id
-                            JOIN workers m ON z.id_механик = m.id
+                            FROM {table_zayavki} z
+                            JOIN {table_workers} w ON z.id_диспетчер = w.id
+                            JOIN {table_goroda} g ON z.id_город = g.id
+                            JOIN {table_street} s ON z.id_улица = s.id
+                            JOIN {table_doma} d ON z.id_дом = d.id
+                            JOIN {table_padik} p ON z.id_подъезд = p.id
+                            JOIN {table_workers} m ON z.id_механик = m.id
                                 WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
                                 and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?
                                 order by z.id;''',
@@ -630,13 +637,13 @@ class Main(tk.Frame):
                                    FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                    комментарий,
                                    z.id
-                            FROM zayavki z
-                            JOIN workers w ON z.id_диспетчер = w.id
-                            JOIN goroda g ON z.id_город = g.id
-                            JOIN street s ON z.id_улица = s.id
-                            JOIN doma d ON z.id_дом = d.id
-                            JOIN padik p ON z.id_подъезд = p.id
-                            JOIN workers m ON z.id_механик = m.id
+                            FROM {table_zayavki} z
+                            JOIN {table_workers} w ON z.id_диспетчер = w.id
+                            JOIN {table_goroda} g ON z.id_город = g.id
+                            JOIN {table_street} s ON z.id_улица = s.id
+                            JOIN {table_doma} d ON z.id_дом = d.id
+                            JOIN {table_padik} p ON z.id_подъезд = p.id
+                            JOIN {table_workers} m ON z.id_механик = m.id
                                 WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
                                 and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?
                                 order by z.id;''',
@@ -668,8 +675,8 @@ class Main(tk.Frame):
                                     SUM(CASE WHEN z.Причина = 'Застревание' THEN 1 ELSE 0 END) as Застр,
                                     SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность') THEN 1 ELSE 0 END) as Неиспр,
                                     SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность', 'Застревание') THEN 1 ELSE 0 END) as Кол_во
-                                    FROM zayavki z
-                                    JOIN goroda g ON z.id_город = g.id
+                                    FROM {table_zayavki} z
+                                    JOIN {table_goroda} g ON z.id_город = g.id
                                     WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%Y') = ?
                                     GROUP BY Город;''',
                 (self.selected_date_str,))
@@ -696,13 +703,13 @@ class Main(tk.Frame):
                                        FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                        комментарий,
                                        z.id
-                                FROM zayavki z
-                                JOIN workers w ON z.id_диспетчер = w.id
-                                JOIN goroda g ON z.id_город = g.id
-                                JOIN street s ON z.id_улица = s.id
-                                JOIN doma d ON z.id_дом = d.id
-                                JOIN padik p ON z.id_подъезд = p.id
-                                JOIN workers m ON z.id_механик = m.id
+                                FROM {table_zayavki} z
+                                JOIN {table_workers} w ON z.id_диспетчер = w.id
+                                JOIN {table_goroda} g ON z.id_город = g.id
+                                JOIN {table_street} s ON z.id_улица = s.id
+                                JOIN {table_doma} d ON z.id_дом = d.id
+                                JOIN {table_padik} p ON z.id_подъезд = p.id
+                                JOIN {table_workers} m ON z.id_механик = m.id
                                 WHERE Причина="Остановлен"
                                 and Дата_запуска is Null and z.pc_id = ?
                                 order by z.id;''', (self.enabled.get(),))
@@ -730,13 +737,13 @@ class Main(tk.Frame):
                                        комментарий,
                                        z.id,
                                        z.Дата_заявки
-                                FROM zayavki z
-                                JOIN workers w ON z.id_диспетчер = w.id
-                                JOIN goroda g ON z.id_город = g.id
-                                JOIN street s ON z.id_улица = s.id
-                                JOIN doma d ON z.id_дом = d.id
-                                JOIN padik p ON z.id_подъезд = p.id
-                                JOIN workers m ON z.id_механик = m.id
+                                FROM {table_zayavki} z
+                                JOIN {table_workers} w ON z.id_диспетчер = w.id
+                                JOIN {table_goroda} g ON z.id_город = g.id
+                                JOIN {table_street} s ON z.id_улица = s.id
+                                JOIN {table_doma} d ON z.id_дом = d.id
+                                JOIN {table_padik} p ON z.id_подъезд = p.id
+                                JOIN {table_workers} m ON z.id_механик = m.id
                                 WHERE Дата_запуска is Null and Причина<>"Остановлен" and z.pc_id = ?
                                 order by z.id;''', (self.enabled.get(),))
                 [self.tree.delete(i) for i in self.tree.get_children()]
@@ -747,6 +754,42 @@ class Main(tk.Frame):
                         self.tree.insert('', 'end', values=tuple(row), tags=('Yellow.Treeview',))
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+
+
+    # ===НЕ ЗАКРЫТЫЕ ЛИНЕЙНЫЕ ЗАЯВКИ==================================================================================
+    def non_start_line_lift(self):
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port,
+                                         database=database)) as connection2:
+                cursor = connection2.cursor()
+                cursor.execute(f'''SELECT z.Номер_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       w.ФИО AS Диспетчер,
+                                       g.город AS Город,
+                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                                       тип_лифта,
+                                       причина,
+                                       m.ФИО,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                       комментарий,
+                                       z.id,
+                                       z.Дата_заявки
+                                FROM {table_zayavki} z
+                                JOIN {table_workers} w ON z.id_диспетчер = w.id
+                                JOIN {table_goroda} g ON z.id_город = g.id
+                                JOIN {table_street} s ON z.id_улица = s.id
+                                JOIN {table_doma} d ON z.id_дом = d.id
+                                JOIN {table_padik} p ON z.id_подъезд = p.id
+                                JOIN {table_workers} m ON z.id_механик = m.id
+                                WHERE Дата_запуска is Null and Причина = "Линейная" and z.pc_id = ?
+                                order by z.id;''', (self.enabled.get(),))
+                [self.tree.delete(i) for i in self.tree.get_children()]
+                for row in cursor.fetchall():
+                    self.tree.insert('', 'end', values=tuple(row), tags=('Orange.Treeview',))
+
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+
 
     # ===ЗАПУЩЕННЫЕ ЛИФТЫ==================================================================================
     def start_lift(self):
@@ -765,13 +808,13 @@ class Main(tk.Frame):
                                        FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                        комментарий,
                                        z.id
-                                FROM zayavki z
-                                JOIN workers w ON z.id_диспетчер = w.id
-                                JOIN goroda g ON z.id_город = g.id
-                                JOIN street s ON z.id_улица = s.id
-                                JOIN doma d ON z.id_дом = d.id
-                                JOIN padik p ON z.id_подъезд = p.id
-                                JOIN workers m ON z.id_механик = m.id
+                                FROM {table_zayavki} z
+                                JOIN {table_workers} w ON z.id_диспетчер = w.id
+                                JOIN {table_goroda} g ON z.id_город = g.id
+                                JOIN {table_street} s ON z.id_улица = s.id
+                                JOIN {table_doma} d ON z.id_дом = d.id
+                                JOIN {table_padik} p ON z.id_подъезд = p.id
+                                JOIN {table_workers} m ON z.id_механик = m.id
                                 where Причина="Остановлен" 
                                 and Дата_запуска is not Null and z.pc_id = ?
                                 order by z.id;''', (self.enabled.get(),))
@@ -801,13 +844,13 @@ class Main(tk.Frame):
                                    FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                    Комментарий,
                                    z.id
-                            FROM zayavki z
-                            JOIN workers w ON z.id_диспетчер = w.id
-                            JOIN goroda g ON z.id_город = g.id
-                            JOIN street s ON z.id_улица = s.id
-                            JOIN doma d ON z.id_дом = d.id
-                            JOIN padik p ON z.id_подъезд = p.id
-                            JOIN workers m ON z.id_механик = m.id 
+                            FROM {table_zayavki} z
+                            JOIN {table_workers} w ON z.id_диспетчер = w.id
+                            JOIN {table_goroda} g ON z.id_город = g.id
+                            JOIN {table_street} s ON z.id_улица = s.id
+                            JOIN {table_doma} d ON z.id_дом = d.id
+                            JOIN {table_padik} p ON z.id_подъезд = p.id
+                            JOIN {table_workers} m ON z.id_механик = m.id 
                                     WHERE z.id in ({selected_id_str})'''
             cursor.execute(sql_query)
             data = cursor.fetchall()
@@ -846,13 +889,13 @@ class Main(tk.Frame):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
-                cursor.execute(f'''UPDATE zayavki z
-                                    JOIN workers w_disp ON z.id_Диспетчер = w_disp.id
-                                    JOIN goroda g ON z.id_город = g.id
-                                    JOIN street s ON z.id_улица = s.id
-                                    JOIN doma d ON z.id_дом = d.id
-                                    JOIN padik p ON z.id_подъезд = p.id
-                                    JOIN workers w_mech ON z.id_Механик = w_mech.id
+                cursor.execute(f'''UPDATE {table_zayavki} z
+                                    JOIN {table_workers} w_disp ON z.id_Диспетчер = w_disp.id
+                                    JOIN {table_goroda} g ON z.id_город = g.id
+                                    JOIN {table_street} s ON z.id_улица = s.id
+                                    JOIN {table_doma} d ON z.id_дом = d.id
+                                    JOIN {table_padik} p ON z.id_подъезд = p.id
+                                    JOIN {table_workers} w_mech ON z.id_Механик = w_mech.id
                                     SET z.Дата_заявки = ?, 
                                         z.id_Диспетчер = ?, 
                                         z.id_город = ?, 
@@ -912,13 +955,13 @@ class Main(tk.Frame):
                                         FROM_UNIXTIME(z.Дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                         z.Комментарий,
                                         z.id
-                                    FROM zayavki z
-                                    JOIN workers w ON z.id_диспетчер = w.id
-                                    JOIN goroda g ON z.id_город = g.id
-                                    JOIN street s ON z.id_улица = s.id
-                                    JOIN doma d ON z.id_дом = d.id
-                                    JOIN padik p ON z.id_подъезд = p.id
-                                    JOIN workers m ON z.id_механик = m.id
+                                    FROM {table_zayavki} z
+                                    JOIN {table_workers} w ON z.id_диспетчер = w.id
+                                    JOIN {table_goroda} g ON z.id_город = g.id
+                                    JOIN {table_street} s ON z.id_улица = s.id
+                                    JOIN {table_doma} d ON z.id_дом = d.id
+                                    JOIN {table_padik} p ON z.id_подъезд = p.id
+                                    JOIN {table_workers} m ON z.id_механик = m.id
                                     WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%m') = ?
                                 AND DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%Y') = ? and z.pc_id = ?
                                 order by z.id;''',
@@ -963,13 +1006,13 @@ class Main(tk.Frame):
                            FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                            комментарий,
                            z.id
-                            FROM zayavki z
-                            JOIN workers w ON z.id_диспетчер = w.id
-                            JOIN goroda g ON z.id_город = g.id
-                            JOIN street s ON z.id_улица = s.id
-                            JOIN doma d ON z.id_дом = d.id
-                            JOIN padik p ON z.id_подъезд = p.id
-                            JOIN workers m ON z.id_механик = m.id
+                            FROM {table_zayavki} z
+                            JOIN {table_workers} w ON z.id_диспетчер = w.id
+                            JOIN {table_goroda} g ON z.id_город = g.id
+                            JOIN {table_street} s ON z.id_улица = s.id
+                            JOIN {table_doma} d ON z.id_дом = d.id
+                            JOIN {table_padik} p ON z.id_подъезд = p.id
+                            JOIN {table_workers} m ON z.id_механик = m.id
                             WHERE CONCAT(s.улица, ', ', d.номер, ', ', p.номер) LIKE ? 
                             and Дата_заявки BETWEEN "{unix_time1}" and "{unix_time2}"''', (f"%{adress}%",))
             [self.tree.delete(i) for i in self.tree.get_children()]
@@ -1006,7 +1049,7 @@ class Main(tk.Frame):
             with closing(
                     mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select id, ФИО from workers where Должность = 'Механик' order by ФИО")
+                cursor.execute(f"select id, ФИО from {table_workers} where Должность = 'Механик' order by ФИО")
                 self.data_meh = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1040,13 +1083,14 @@ class Main(tk.Frame):
                     mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''SELECT Тип_лифта
-                                    FROM lifts
-                                    JOIN padik ON lifts.id_подъезд = padik.id
-                                    JOIN doma ON lifts.id_дом = doma.id
-                                    JOIN street ON doma.id_улица = street.id
-                                    JOIN goroda ON street.id_город = goroda.id
-                                    WHERE goroda.город = "{self.selected_city}" AND street.улица = "{street}"
-                                    and doma.номер = "{house}" and padik.номер = "{entrance}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                                    FROM {table_lifts}
+                                    JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                                    JOIN {table_doma} ON {table_lifts}.id_дом = {table_doma}.id
+                                    JOIN {table_street} ON {table_doma}.id_улица = {table_street}.id
+                                    JOIN {table_goroda} ON {table_street}.id_город = {table_goroda}.id
+                                    WHERE {table_goroda}.город = "{self.selected_city}" AND {table_street}.улица = "{street}"
+                                    and {table_doma}.номер = "{house}" and {table_padik}.номер = "{entrance}" 
+                                    order BY {table_street}.улица, {table_doma}.`номер`, {table_padik}.`номер`''')
                 data_lifts = cursor.fetchall()
                 for lift in data_lifts:
                     lift_str = f"{lift['Тип_лифта']}"
@@ -1070,15 +1114,15 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''
-                        SELECT street.Улица, doma.Номер AS дом, padik.Номер AS подъезд
-                        FROM street
-                        JOIN doma ON street.id = doma.id_улица
-                        JOIN lifts ON doma.id = lifts.id_дом
-                        JOIN padik ON lifts.id_подъезд = padik.id
-                        JOIN goroda ON street.id_город = goroda.id
-                        WHERE goroda.Город = '{self.selected_city}'
-                        group BY street.`Улица`, doma.`Номер`, padik.`Номер`
-						ORDER BY street.`Улица`, doma.`Номер`, padik.`Номер`''')
+                        SELECT {table_street}.Улица, {table_doma}.Номер AS дом, {table_padik}.Номер AS подъезд
+                        FROM {table_street}
+                        JOIN {table_doma} ON {table_street}.id = {table_doma}.id_улица
+                        JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
+                        JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                        JOIN {table_goroda} ON {table_street}.id_город = {table_goroda}.id
+                        WHERE {table_goroda}.Город = '{self.selected_city}'
+                        group BY {table_street}.`Улица`, {table_doma}.`Номер`, {table_padik}.`Номер`
+						ORDER BY {table_street}.`Улица`, {table_doma}.`Номер`, {table_padik}.`Номер`''')
                 data_streets = cursor.fetchall()
                 for d in data_streets:
                     address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"
@@ -1170,14 +1214,21 @@ class Main(tk.Frame):
                 try:
                     with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                         cursor = connection.cursor()
-                        cursor.execute(f'''SELECT goroda.id AS goroda_id, street.id AS street_id, doma.id AS doma_id, padik.id AS padik_id, lifts.id as id_лифт
-                                                FROM lifts
-                                                JOIN padik ON lifts.id_подъезд = padik.id
-                                                JOIN doma ON lifts.id_дом = doma.id
-                                                JOIN street ON doma.id_улица = street.id
-                                                JOIN goroda ON street.id_город = goroda.id
-                                                WHERE goroda.город = "{self.selected_city}" AND street.улица = "{parts[0].strip()}" AND doma.номер = "{parts[1].strip()}" 
-                                                AND padik.номер = "{parts[2].strip()}" and тип_лифта="{self.entry_text4.get()}";''')
+                        cursor.execute(f'''SELECT 
+                        {table_goroda}.id AS goroda_id, 
+                        {table_street}.id AS street_id, 
+                        {table_doma}.id AS doma_id, 
+                        {table_padik}.id AS padik_id, 
+                        {table_lifts}.id as id_лифт
+                            FROM {table_lifts}
+                            JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                            JOIN {table_doma} ON {table_lifts}.id_дом = {table_doma}.id
+                            JOIN {table_street} ON {table_doma}.id_улица = {table_street}.id
+                            JOIN {table_goroda} ON {table_street}.id_город = {table_goroda}.id
+                            WHERE {table_goroda}.город = "{self.selected_city}" 
+                            AND {table_street}.улица = "{parts[0].strip()}" 
+                            AND {table_doma}.номер = "{parts[1].strip()}" 
+                            AND {table_padik}.номер = "{parts[2].strip()}" and тип_лифта="{self.entry_text4.get()}";''')
                         data_lifts = cursor.fetchall()
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1188,7 +1239,7 @@ class Main(tk.Frame):
                 try:
                     with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                         cursor = connection.cursor()
-                        cursor.execute(f'''INSERT INTO zayavki (
+                        cursor.execute(f'''INSERT INTO {table_zayavki} (
                                         Номер_заявки,
                                         Дата_заявки,
                                         id_Диспетчер,
@@ -1267,7 +1318,7 @@ class Child(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("SELECT id, ФИО FROM workers WHERE Должность = 'Диспетчер'")
+                cursor.execute(f"SELECT id, ФИО FROM {table_workers} WHERE Должность = 'Диспетчер'")
                 read = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1286,7 +1337,7 @@ class Child(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select id, город from goroda")
+                cursor.execute(f"select id, город from {table_goroda}")
                 data_towns = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1304,23 +1355,23 @@ class Child(tk.Toplevel):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''SELECT
-                                    goroda.id as goroda_id,
-                                    goroda.город,
-                                    CONCAT(street.улица, ', ', doma.номер, ', ', padik.номер) as Адрес,
-                                    street.id as street_id,
-                                    street.улица as улица,
-                                    doma.id as doma_id,
-                                    doma.номер as дом,
-                                    padik.id as padik_id,
-                                    padik.номер as подъезд
-                                FROM goroda
-                                JOIN street ON goroda.id = street.id_город
-                                JOIN doma ON street.id = doma.id_улица
-                                JOIN lifts ON doma.id = lifts.id_дом
-                                JOIN padik ON lifts.id_подъезд = padik.id
-                                WHERE goroda.город = '{self.combobox_town.get()}'
-                                group BY street.`Улица`, doma.`Номер`, padik.`Номер`
-                                ORDER BY street.улица, doma.номер, padik.номер;''')
+                                    {table_goroda}.id as goroda_id,
+                                    {table_goroda}.город,
+                                    CONCAT({table_street}.улица, ', ', {table_doma}.номер, ', ', {table_padik}.номер) as Адрес,
+                                    {table_street}.id as street_id,
+                                    {table_street}.улица as улица,
+                                    {table_doma}.id as doma_id,
+                                    {table_doma}.номер as дом,
+                                    {table_padik}.id as padik_id,
+                                    {table_padik}.номер as подъезд
+                                FROM {table_goroda}
+                                JOIN {table_street} ON {table_goroda}.id = {table_street}.id_город
+                                JOIN {table_doma} ON {table_street}.id = {table_doma}.id_улица
+                                JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
+                                JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                                WHERE {table_goroda}.город = '{self.combobox_town.get()}'
+                                group BY {table_street}.`Улица`, {table_doma}.`Номер`, {table_padik}.`Номер`
+                                ORDER BY {table_street}.улица, {table_doma}.номер, {table_padik}.номер;''')
                 self.adreses = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1343,14 +1394,14 @@ class Child(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor(dictionary=True)
-                cursor.execute(f'''SELECT lifts.тип_лифта
-                                    FROM lifts
-                                    JOIN padik ON lifts.id_подъезд = padik.id
-                                    JOIN doma ON lifts.id_дом = doma.id
-                                    JOIN street ON doma.id_улица = street.id
-                                    JOIN goroda ON street.id_город = goroda.id
-                                    WHERE goroda.город = "{self.combobox_town.get()}" AND street.улица = "{self.street}"
-                                    and doma.номер = "{self.house}" and padik.номер = "{self.entrance}"''')
+                cursor.execute(f'''SELECT {table_lifts}.тип_лифта
+                                    FROM {table_lifts}
+                                    JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                                    JOIN {table_doma} ON {table_lifts}.id_дом = {table_doma}.id
+                                    JOIN {table_street} ON {table_doma}.id_улица = {table_street}.id
+                                    JOIN {table_goroda} ON {table_street}.id_город = {table_goroda}.id
+                                    WHERE {table_goroda}.город = "{self.combobox_town.get()}" AND {table_street}.улица = "{self.street}"
+                                    and {table_doma}.номер = "{self.house}" and {table_padik}.номер = "{self.entrance}"''')
                 data_lifts = cursor.fetchall()
                 self.add_type_lifts = [lift['тип_лифта'] for lift in data_lifts]
                 # Обновление значений комбобокса с типами лифтов
@@ -1367,7 +1418,7 @@ class Child(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select ФИО, id from workers where Должность = 'Механик' order by ФИО")
+                cursor.execute(f"select ФИО, id from {table_workers} where Должность = 'Механик' order by ФИО")
                 read = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1404,15 +1455,15 @@ class Child(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''SELECT CONCAT(street.улица, ', ', CAST(doma.номер AS CHAR), ', ', CAST(padik.номер AS CHAR)) AS Адрес
-                    FROM goroda
-                    JOIN street ON goroda.id = street.id_город
-                    JOIN doma ON street.id = doma.id_улица
-                    JOIN lifts ON doma.id = lifts.id_дом
-                    JOIN padik ON lifts.id_подъезд = padik.id
-                    WHERE goroda.город = "{self.combobox_town.get()}"
-                    group BY street.`Улица`, doma.`Номер`, padik.`Номер`
-                    order by street.улица, doma.номер, padik.номер''')
+                cursor.execute(f'''SELECT CONCAT({table_street}.улица, ', ', CAST({table_doma}.номер AS CHAR), ', ', CAST({table_padik}.номер AS CHAR)) AS Адрес
+                    FROM {table_goroda}
+                    JOIN {table_street} ON {table_goroda}.id = {table_street}.id_город
+                    JOIN {table_doma} ON {table_street}.id = {table_doma}.id_улица
+                    JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
+                    JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                    WHERE {table_goroda}.город = "{self.combobox_town.get()}"
+                    group BY {table_street}.`Улица`, {table_doma}.`Номер`, {table_padik}.`Номер`
+                    order by {table_street}.улица, {table_doma}.номер, {table_padik}.номер''')
                 self.adreses = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1429,14 +1480,14 @@ class Child(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor(dictionary=True)
-                cursor.execute(f'''SELECT lifts.тип_лифта
-                                FROM lifts
-                                JOIN padik ON lifts.id_подъезд = padik.id
-                                JOIN doma ON lifts.id_дом = doma.id
-                                JOIN street ON doma.id_улица = street.id
-                                JOIN goroda ON street.id_город = goroda.id
-                                WHERE goroda.город = "{self.combobox_town.get()}" AND street.улица = "{self.street}"
-                                and doma.номер = "{self.house}" and padik.номер = "{self.entrance}"''')
+                cursor.execute(f'''SELECT {table_lifts}.тип_лифта
+                                FROM {table_lifts}
+                                JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                                JOIN {table_doma} ON {table_lifts}.id_дом = {table_doma}.id
+                                JOIN {table_street} ON {table_doma}.id_улица = {table_street}.id
+                                JOIN {table_goroda} ON {table_street}.id_город = {table_goroda}.id
+                                WHERE {table_goroda}.город = "{self.combobox_town.get()}" AND {table_street}.улица = "{self.street}"
+                                and {table_doma}.номер = "{self.house}" and {table_padik}.номер = "{self.entrance}"''')
                 data_lifts = cursor.fetchall()
                 self.add_type_lifts = [lift['тип_лифта'] for lift in data_lifts]
                 # Обновление значений комбобокса с типами лифтов
@@ -1514,7 +1565,7 @@ class Search(tk.Toplevel):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port,
                                          database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select id, город from goroda")
+                cursor.execute(f"select id, город from {table_goroda}")
                 data_towns = cursor.fetchall()
         except mariadb.Error as e:
             messagebox.showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1600,22 +1651,22 @@ class Search(tk.Toplevel):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''SELECT
-                                            goroda.id as goroda_id,
-                                            goroda.город,
-                                            street.id as street_id,
-                                            street.улица,
-                                            doma.id as doma_id,
-                                            doma.номер as дом,
-                                            padik.id as padik_id,
-                                            padik.номер as подъезд
-                                        FROM goroda
-                                        JOIN street ON goroda.id = street.id_город
-                                        JOIN doma ON street.id = doma.id_улица
-                                        JOIN lifts ON doma.id = lifts.id_дом
-                                        JOIN padik ON lifts.id_подъезд = padik.id
-                                        WHERE goroda.город = '{self.selected_city}'
-                                        GROUP BY street.улица, doma.номер, padik.номер
-                                        ORDER BY street.улица, doma.номер, padik.номер;''')
+                                            {table_goroda}.id as goroda_id,
+                                            {table_goroda}.город,
+                                            {table_street}.id as street_id,
+                                            {table_street}.улица,
+                                            {table_doma}.id as doma_id,
+                                            {table_doma}.номер as дом,
+                                            {table_padik}.id as padik_id,
+                                            {table_padik}.номер as подъезд
+                                        FROM {table_goroda}
+                                        JOIN {table_street} ON {table_goroda}.id = {table_street}.id_город
+                                        JOIN {table_doma} ON {table_street}.id = {table_doma}.id_улица
+                                        JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
+                                        JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                                        WHERE {table_goroda}.город = '{self.selected_city}'
+                                        GROUP BY {table_street}.улица, {table_doma}.номер, {table_padik}.номер
+                                        ORDER BY {table_street}.улица, {table_doma}.номер, {table_padik}.номер;''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
@@ -1664,15 +1715,15 @@ class Search(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''SELECT street.Улица, doma.Номер AS дом, padik.Номер AS подъезд
-                        FROM street
-                        JOIN doma ON street.id = doma.id_улица
-                        JOIN lifts ON doma.id = lifts.id_дом
-                        JOIN padik ON lifts.id_подъезд = padik.id
-                        JOIN goroda ON street.id_город = goroda.id
-                        WHERE goroda.Город = '{self.selected_city}'
-                        group BY street.`Улица`, doma.`Номер`, padik.`Номер`
-						ORDER BY street.`Улица`, doma.`Номер`, padik.`Номер`''')
+                cursor.execute(f'''SELECT {table_street}.Улица, {table_doma}.Номер AS дом, {table_padik}.Номер AS подъезд
+                        FROM {table_street}
+                        JOIN {table_doma} ON {table_street}.id = {table_doma}.id_улица
+                        JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
+                        JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                        JOIN {table_goroda} ON {table_street}.id_город = {table_goroda}.id
+                        WHERE {table_goroda}.Город = '{self.selected_city}'
+                        group BY {table_street}.`Улица`, {table_doma}.`Номер`, {table_padik}.`Номер`
+						ORDER BY {table_street}.`Улица`, {table_doma}.`Номер`, {table_padik}.`Номер`''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"
@@ -1688,15 +1739,15 @@ class Search(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''SELECT street.Улица, doma.Номер AS дом, padik.Номер AS подъезд
-                        FROM street
-                        JOIN doma ON street.id = doma.id_улица
-                        JOIN lifts ON doma.id = lifts.id_дом
-                        JOIN padik ON lifts.id_подъезд = padik.id
-                        JOIN goroda ON street.id_город = goroda.id
-                        WHERE goroda.Город = '{self.selected_city}'
-                        group BY street.`Улица`, doma.`Номер`, padik.`Номер`
-						ORDER BY street.`Улица`, doma.`Номер`, padik.`Номер`''')
+                cursor.execute(f'''SELECT {table_street}.Улица, {table_doma}.Номер AS дом, {table_padik}.Номер AS подъезд
+                        FROM {table_street}
+                        JOIN {table_doma} ON {table_street}.id = {table_doma}.id_улица
+                        JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
+                        JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                        JOIN {table_goroda} ON {table_street}.id_город = {table_goroda}.id
+                        WHERE {table_goroda}.Город = '{self.selected_city}'
+                        group BY {table_street}.`Улица`, {table_doma}.`Номер`, {table_padik}.`Номер`
+						ORDER BY {table_street}.`Улица`, {table_doma}.`Номер`, {table_padik}.`Номер`''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"  # Парсим адреса из файла
