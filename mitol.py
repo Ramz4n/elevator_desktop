@@ -254,10 +254,10 @@ class Main(tk.Frame):
         self.on_button = Button(tool4, image=self.off, bd=0, command=self.switch)
         self.on_button.pack()
         btn_lineyka_close = tk.Button(tool5, text='Линейные закрытые', compound=tk.TOP,
-                              command=print(123), width=19, font=helv36)
+                              command=self.close_line_lift, width=19, font=helv36)
         btn_lineyka_close.pack(side=tk.BOTTOM)
         btn_lineyka_open = tk.Button(tool5, text='Линейные открытые', compound=tk.TOP,
-                                command=self.non_start_line_lift, width=19, font=helv36)
+                                command=self.open_line_lift, width=19, font=helv36)
         btn_lineyka_open.pack(side=tk.BOTTOM)
         # === ПЕРЕЛИСТЫВАНИЕ БД ПО МЕСЯЦАМ=====================================================================
         self.months = ["Январь", "Февраль", "Март", "Апрель",
@@ -756,8 +756,8 @@ class Main(tk.Frame):
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
 
-    # ===НЕ ЗАКРЫТЫЕ ЛИНЕЙНЫЕ ЗАЯВКИ==================================================================================
-    def non_start_line_lift(self):
+    # ===ОТКРЫТЫЕ ЛИНЕЙНЫЕ ЗАЯВКИ==================================================================================
+    def open_line_lift(self):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port,
                                          database=database)) as connection2:
@@ -782,6 +782,40 @@ class Main(tk.Frame):
                                 JOIN {table_padik} p ON z.id_подъезд = p.id
                                 JOIN {table_workers} m ON z.id_механик = m.id
                                 WHERE Дата_запуска is Null and Причина = "Линейная" and z.pc_id = ?
+                                order by z.id;''', (self.enabled.get(),))
+                [self.tree.delete(i) for i in self.tree.get_children()]
+                for row in cursor.fetchall():
+                    self.tree.insert('', 'end', values=tuple(row), tags=('Orange.Treeview',))
+
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+
+    # ===ЗАКРЫТЫЕ ЛИНЕЙНЫЕ ЗАЯВКИ==================================================================================
+    def close_line_lift(self):
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port,
+                                         database=database)) as connection2:
+                cursor = connection2.cursor()
+                cursor.execute(f'''SELECT z.Номер_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       w.ФИО AS Диспетчер,
+                                       g.город AS Город,
+                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                                       тип_лифта,
+                                       причина,
+                                       m.ФИО,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                       комментарий,
+                                       z.id,
+                                       z.Дата_заявки
+                                FROM {table_zayavki} z
+                                JOIN {table_workers} w ON z.id_диспетчер = w.id
+                                JOIN {table_goroda} g ON z.id_город = g.id
+                                JOIN {table_street} s ON z.id_улица = s.id
+                                JOIN {table_doma} d ON z.id_дом = d.id
+                                JOIN {table_padik} p ON z.id_подъезд = p.id
+                                JOIN {table_workers} m ON z.id_механик = m.id
+                                WHERE Дата_запуска > 100 and Причина = "Линейная" and z.pc_id = ?
                                 order by z.id;''', (self.enabled.get(),))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
@@ -1283,7 +1317,7 @@ class Child(tk.Toplevel):
 
     def init_child(self):
         self.title('Редактировать')
-        self.geometry('500x500')
+        self.geometry('500x500+0+0')
         self.resizable(False, False)
         self.wm_attributes('-topmost', 1)
 
@@ -1524,10 +1558,14 @@ class Child(tk.Toplevel):
 
     def save_and_close(self):
         if self.get_selected_adres_id() == 'ВЫБРАТЬ АДРЕС' or self.selected_type.get() == 'ВЫБРАТЬ ЛИФТ':
+            self.grab_set()  # Блокируем доступ к другим окнам
             mb.showerror("Ошибка", "Вы не выбрали АДРЕС или ТИП ЛИФТА")
+            self.grab_release()  # Разрешаем доступ к другим окнам
             return
-        elif self.get_selected_meh_id() == '':
+        elif self.get_selected_meh_id() is None:
+            self.grab_set()  # Блокируем доступ к другим окнам
             mb.showerror("Ошибка", "Вы не выбрали ФИО механика")
+            self.grab_release()  # Разрешаем доступ к другим окнам
             return
 
         self.view.update_record(
