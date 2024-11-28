@@ -343,6 +343,55 @@ class Main(tk.Frame):
         self.tree.pack(side="left", fill="both")
         self.on_select_city()
 
+    def clipboard(self):
+        if self.tree.selection():
+            try:
+                selected_item_id = self.tree.selection()[0]  # Получаем ID выбранного элемента
+                request_id = self.tree.set(selected_item_id, '#11')  # Получаем значение из колонки #11
+
+                with closing(mariadb.connect(user=user, password=password, host=host, port=port,
+                                             database=database)) as connection2:
+                    cursor = connection2.cursor()
+                    cursor.execute(f'''SELECT z.Номер_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       w.ФИО AS Диспетчер,
+                                       g.город AS Город,
+                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                                       тип_лифта,
+                                       причина,
+                                       комментарий
+                                     FROM {table_zayavki} z
+                                     JOIN {table_workers} w ON z.id_диспетчер = w.id
+                                     JOIN {table_goroda} g ON z.id_город = g.id
+                                     JOIN {table_street} s ON z.id_улица = s.id
+                                     JOIN {table_doma} d ON z.id_дом = d.id
+                                     JOIN {table_padik} p ON z.id_подъезд = p.id
+                                     JOIN {table_workers} m ON z.id_механик = m.id
+                                     WHERE z.id=?''', [request_id])
+
+                    result = cursor.fetchone()  # Получаем первую строку результата
+                    if result:  # Проверяем, что результат не None
+                        # Создаем строку с метками
+                        result_str = (
+                            f"№: {result[0]}\n"  # Номер заявки
+                            f"Дата: {result[1]}\n"  # Дата заявки
+                            f"Диспетчер: {result[2]}\n"  # Диспетчер
+                            f"Город: {result[3]}\n"  # Город
+                            f"Адрес: {result[4]}\n"  # Адрес
+                            f"Лифт: {result[5]}\n"  # Тип лифта
+                            f"Причина: {result[6]}\n"  # Причина
+                            f"Комментарий: {result[7]}"  # Комментарий
+                        )
+                        self.clipboard_clear()  # Очищаем буфер обмена
+                        self.clipboard_append(result_str)  # Добавляем результат в буфер обмена
+                        connection2.commit()
+                    else:
+                        mb.showinfo('Информация', 'Нет данных для выбранного элемента.')
+            except mariadb.Error as e:
+                showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+        else:
+            mb.showerror('Вы не выбрали строку')
+
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
@@ -423,6 +472,7 @@ class Main(tk.Frame):
         settings_menu.add_command(label="Ревизия/инспекция", command=lambda: self.error("Лифт в ревизии/инспекции"))
         settings_menu.add_command(label="Аварийная блокировка", command=lambda: self.error("Аварийная блокировка"))
         menu.add_cascade(label="Ошибка", command=lambda: self.error("Ошибка"), menu=settings_menu)
+        menu.add_command(label="Копировать заявку", command=lambda: self.clipboard())
         menu.add_command(label="Редактировать", command=lambda: self.edit("Редактировать"))
         menu.add_command(label="Отметить Время", command=lambda: self.time_to("Отметить Время"))
         menu.add_command(label="Комментировать", command=lambda: self.open_comment("Комментировать"))
