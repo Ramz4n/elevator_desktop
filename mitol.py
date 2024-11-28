@@ -27,6 +27,7 @@ import pymysql
 import sys
 import sqlite3
 from speech import Speech_recorder
+import timeit
 
 
 class Main(tk.Frame):
@@ -61,7 +62,9 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''select w.ФИО from {table_zayavki} z
-                JOIN {table_workers} w ON z.id_диспетчер = w.id ORDER BY z.id DESC LIMIT 1''')
+                JOIN {table_workers} w ON z.id_диспетчер = w.id
+                where pc_id={pc_id}
+                ORDER BY z.id DESC LIMIT 1''')
                 data_worker = cursor.fetchone()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -428,8 +431,8 @@ class Main(tk.Frame):
         menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.error("Отсутствие электроэнергии"))
         menu.add_command(label="Пожарная сигнализация", command=lambda: self.error("Пожарная сигнализация"))
         menu.add_command(label="Вандальные действия", command=lambda: self.error("Вандальные действия"))
-        #menu.add_separator()
-        #menu.add_command(label="Удалить Заявку", command=lambda: self.delete("Удалить Заявку"))
+        menu.add_separator()
+        menu.add_command(label="Удалить Заявку", command=lambda: self.delete("Удалить Заявку"))
         menu.post(event.x_root, event.y_root)
 
     # ===РЕДАКТИРОВАТЬ========================================================================
@@ -501,26 +504,40 @@ class Main(tk.Frame):
         mb.showinfo("Информация", msg)
 
     # ===УДАЛЕНИЕ СТРОКИ=====================================================================
-    # def delete(self, event):
-    #     if self.tree.selection():
-    #         result = askyesno(title="Подтвержение операции", message="УДАЛИТЬ строчку?")
-    #         if result:
-    #             try:
-    #                 with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-    #                     cursor = connection2.cursor()
-    #                     cursor.execute(f'''delete from {table_zayavki} WHERE ID=?''',
-    #                                    [self.tree.set(self.tree.selection()[0], '#11')])
-    #                     connection2.commit()
-    #             except mariadb.Error as e:
-    #                 showinfo('Информация', f"Ошибка удаления записи: {e}")
-    #         else:
-    #             showinfo("Результат", "Операция отменена")
-    #     else:
-    #         mb.showerror(
-    #             "Ошибка",
-    #             "Строка не выбрана")
-    #         return
-    #     self.view_records()
+    def delete(self, event):
+        if self.tree.selection():
+            result = askyesno(title="Подтвержение операции", message="УДАЛИТЬ строчку?")
+            if result:
+                try:
+                    with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                        cursor = connection2.cursor()
+                        id_value = self.tree.set(self.tree.selection()[0], '#11')
+                        cursor.execute(f'''UPDATE {table_zayavki} 
+                                            SET Дата_заявки = NULL,
+                                                id_Диспетчер = NULL,
+                                                id_город = NULL,
+                                                id_улица = NULL,
+                                                id_дом = NULL,
+                                                id_подъезд = NULL,
+                                                тип_лифта = NULL,
+                                                Причина = NULL,
+                                                Дата_запуска = NULL,
+                                                id_Механик = NULL,
+                                                Комментарий = NULL,
+                                                id_Лифт = NULL,
+                                                pc_id = NULL
+                                            WHERE ID = ?''', (id_value,))
+                        connection2.commit()
+                except mariadb.Error as e:
+                    showinfo('Информация', f"Ошибка удаления записи: {e}")
+            else:
+                showinfo("Результат", "Операция отменена")
+        else:
+            mb.showerror(
+                "Ошибка",
+                "Строка не выбрана")
+            return
+        self.view_records()
 
     # ===ОТМЕТИТЬ ЛОЖНУЮ==============================================================================
     def lojnaya(self, event):
@@ -1066,7 +1083,7 @@ class Main(tk.Frame):
                 showinfo('Информация', "Нет заявок")
 
     def open_search_dialog(self):
-        Search(address_)
+        Search()
 
     # ===ОБНОВЛЕНИЕ СТРОК ФИО И АДРЕСОВ В ЛИСТБОКСАХ============================================
     def obnov(self):
@@ -1446,7 +1463,7 @@ class Child(tk.Toplevel):
         self.combobox_lift.place(x=200, y=170)
 #==============================================================================================
         self.combobox_stop = ttk.Combobox(self, values=list(dict.fromkeys(
-                    [self.rows[0]['причина'], 'Неисправность', 'Застревание', 'Остановлен'])), font=font10)
+                    [self.rows[0]['причина'], 'Неисправность', 'Застревание', 'Остановлен', 'Линейная', 'Связь'])), font=font10)
         self.combobox_stop.current(0)
         self.combobox_stop.place(x=200, y=200)
 #==============================================================================================
@@ -1584,8 +1601,7 @@ class Child(tk.Toplevel):
         self.destroy()
 
 class Search(tk.Toplevel):
-    def __init__(self, address_):
-        address_ = address_
+    def __init__(self):
         super().__init__()
         self.init_search()
         self.view = app
@@ -1892,10 +1908,7 @@ if __name__ == "__main__":
     table_zayavki = data['table_zayavki']
     table_workers = data['table_workers']
 
-    fio_ = 'fio_meh.csv'
-    address_ = 'adreses.csv'
-    fio_dispetchers = 'fio_dispetchers.csv'
-    goroda = 'goroda.csv'
+
     time_format = "%d.%m.%Y, %H:%M"
 
     root = tk.Tk()
