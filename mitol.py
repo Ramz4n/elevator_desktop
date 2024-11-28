@@ -1382,7 +1382,7 @@ class Child(tk.Toplevel):
         l1 = [j for j in fio_d]
         l1.insert(0, self.rows[0]['Диспетчер'])
         # Создание Combobox с выбором диспетчера
-        self.dispetcher = ttk.Combobox(self, values=list(dict.fromkeys(l1)), font=font10)
+        self.dispetcher = ttk.Combobox(self, values=list(dict.fromkeys(l1)), font=font10, state='readonly')
         self.dispetcher.current(0)
         self.dispetcher.place(x=200, y=80)
 #============================================================================================
@@ -1398,7 +1398,7 @@ class Child(tk.Toplevel):
         town_d = [i['город'] for i in data_towns]
         g1 = [j for j in town_d]
         g1.insert(0, self.rows[0]['Город'])
-        self.combobox_town = ttk.Combobox(self, values=list(dict.fromkeys(g1)), font=font10)
+        self.combobox_town = ttk.Combobox(self, values=list(dict.fromkeys(g1)), font=font10, state='readonly')
         self.combobox_town.current(0)
         self.combobox_town.place(x=200, y=110)
         self.combobox_town.bind("<<ComboboxSelected>>", self.on_town_select)
@@ -1432,7 +1432,7 @@ class Child(tk.Toplevel):
         self.padik_to_id = {i['подъезд']: i['padik_id'] for i in self.adreses}
         adres_list = [i['Адрес'] for i in self.adreses]
         self.selected_address = tk.StringVar(value=self.rows[0]['Адрес'])
-        self.address_combobox = ttk.Combobox(self, textvariable=self.selected_address, font=font10, width=30)
+        self.address_combobox = ttk.Combobox(self, textvariable=self.selected_address, font=font10, width=30, state='readonly')
         adres_list.insert(0, self.rows[0]['Адрес'])
         self.address_combobox['values'] = adres_list
         self.address_combobox.place(x=200, y=140)
@@ -1441,7 +1441,7 @@ class Child(tk.Toplevel):
 
 #=============================================================================================
         self.selected_type = tk.StringVar(value=self.rows[0]['тип_лифта'])
-        self.combobox_lift = ttk.Combobox(self, textvariable=self.selected_type, font=font10)
+        self.combobox_lift = ttk.Combobox(self, textvariable=self.selected_type, font=font10, state='readonly')
         self.street, self.house, self.entrance = self.address_combobox.get().split(', ')
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
@@ -1463,7 +1463,7 @@ class Child(tk.Toplevel):
         self.combobox_lift.place(x=200, y=170)
 #==============================================================================================
         self.combobox_stop = ttk.Combobox(self, values=list(dict.fromkeys(
-                    [self.rows[0]['причина'], 'Неисправность', 'Застревание', 'Остановлен', 'Линейная', 'Связь'])), font=font10)
+                    [self.rows[0]['причина'], 'Неисправность', 'Застревание', 'Остановлен', 'Линейная', 'Связь'])), font=font10, state='readonly')
         self.combobox_stop.current(0)
         self.combobox_stop.place(x=200, y=200)
 #==============================================================================================
@@ -1478,7 +1478,7 @@ class Child(tk.Toplevel):
         meh = [i['ФИО'] for i in read]
         m1 = [j for j in meh]
         m1.insert(0, self.rows[0]['ФИО'])
-        self.combobox_meh = ttk.Combobox(self, values=list(dict.fromkeys(m1)), font=font10)
+        self.combobox_meh = ttk.Combobox(self, values=list(dict.fromkeys(m1)), font=font10, state='readonly')
         self.combobox_meh.current(0)
         self.combobox_meh.place(x=200, y=230)
 #====================================================================================
