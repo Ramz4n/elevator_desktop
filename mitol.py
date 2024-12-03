@@ -128,12 +128,12 @@ class Main(tk.Frame):
         self.canvas.bind("<Button-4>", self._on_mousewheel)
         self.canvas.bind("<Button-5>", self._on_mousewheel)
 
-        self.var2 = tk.StringVar(value=default_town['город'] if default_town else '')
-        self.var2.trace("w", self.on_select_city)
+        self.city = tk.StringVar(value=default_town['город'] if default_town else '')
+        self.city.trace("w", self.on_select_city)
 
         for town in data_towns:
             radiobutton = tk.Radiobutton(self.scrollable_frame, font=('Calibri', 14), text=town['город'],
-                                         variable=self.var2,
+                                         variable=self.city,
                                          value=town['город'])
             radiobutton.pack(anchor="w")
             radiobutton.bind("<MouseWheel>", self._on_mousewheel)
@@ -342,6 +342,7 @@ class Main(tk.Frame):
         self.scrollbar.pack(side="bottom", fill="both")
         self.tree.pack(side="left", fill="both")
         self.on_select_city()
+        Tooltip(self.tree)
 
     def clipboard(self):
         if self.tree.selection():
@@ -393,7 +394,7 @@ class Main(tk.Frame):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def on_select_city(self, *args):
-        selected_city = self.var2.get()
+        selected_city = self.city.get()
 
     def switch(self):
         pc = {1, 2}
@@ -414,7 +415,7 @@ class Main(tk.Frame):
 
 #ФУНКЦИЯ ПО ПОЛУЧЕНИЮ ГОРОДА И ДАЛЬНЕЙШЕМУ ПАРСИНГУ АДРЕСОВ В ОКОШКО ПО ГОРОДАМ
     def on_select_city(self, *args):
-        self.selected_city = self.var2.get()
+        self.selected_city = self.city.get()
         self.listbox.delete(0, tk.END)
         self.listbox_type.delete(0, tk.END)
         try:
@@ -1372,6 +1373,57 @@ class Main(tk.Frame):
         else:
             showinfo("Результат", "Действие отменено.")
 
+
+#====НАВЕДЕНИЕ МЫШКОЙ НА КОММЕНТ=====================================================================
+class Tooltip:
+    def __init__(self, widget):
+        self.widget = widget
+        self.tooltip_window = None
+        self.widget.bind("<Motion>", self.on_mouse_move)
+        self.widget.bind("<Leave>", self.hide_tooltip)
+        self.last_row_id = None
+        self.last_column_id = None
+
+    def on_mouse_move(self, event):
+        row_id = self.widget.identify_row(event.y)
+        column_id = self.widget.identify_column(event.x)
+
+        if row_id != self.last_row_id or column_id != self.last_column_id:
+            self.last_row_id = row_id
+            self.last_column_id = column_id
+            self.hide_tooltip()
+
+            if row_id and column_id == '#10':  # '#10' это индекс колонки 'comment'
+                comment_text = self.widget.item(row_id, 'values')[9]
+                self.show_tooltip(event, comment_text)
+
+    def show_tooltip(self, event, text):
+        if self.tooltip_window is not None:
+            return
+
+        # Создаем всплывающее окно
+        self.tooltip_window = tk.Toplevel(self.widget)
+        self.tooltip_window.wm_overrideredirect(True)
+
+        # Получаем размеры окна и подсказки
+        x = self.widget.winfo_rootx() + event.x
+        y = self.widget.winfo_rooty() + event.y + 20  # Смещение вниз
+
+        # Учитываем размеры экрана
+        screen_width = self.widget.winfo_toplevel().winfo_screenwidth()
+        tooltip_width = 200  # Ширина подсказки
+        if x + tooltip_width > screen_width:
+            x = self.widget.winfo_rootx() + event.x - tooltip_width - 20  # Сдвигаем влево, если выходит за пределы
+
+        self.tooltip_window.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(self.tooltip_window, text=text, background="yellow", wraplength=tooltip_width)
+        label.pack()
+
+    def hide_tooltip(self, event=None):
+        if self.tooltip_window is not None:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
+
 # ====ВЫЗОВ ФУНКЦИЙ КНОПОК РЕДАКТИРОВАНИЯ==================================================================
 class Child(tk.Toplevel):
     def __init__(self, rows):
@@ -1675,8 +1727,8 @@ class Search(tk.Toplevel):
 
         default_town = data_towns[0] if data_towns else ''
 
-        self.label2 = tk.Label(toolbar4, borderwidth=1, width=21, relief="raised", text="Город", font='Calibri 14 bold')
-        self.label2.pack(side=tk.TOP)
+        self.label_city = tk.Label(toolbar4, borderwidth=1, width=21, relief="raised", text="Город", font='Calibri 14 bold')
+        self.label_city.pack(side=tk.TOP)
 
         self.canvas = tk.Canvas(toolbar4, width=100)
         self.scrollbar = ttk.Scrollbar(toolbar4, orient="vertical", command=self.canvas.yview)
@@ -1699,12 +1751,12 @@ class Search(tk.Toplevel):
         self.canvas.bind("<Button-4>", self._on_mousewheel)
         self.canvas.bind("<Button-5>", self._on_mousewheel)
 
-        self.var2 = tk.StringVar(value=default_town['город'] if default_town else '')
-        self.var2.trace("w", self.on_select_city)
+        self.city = tk.StringVar(value=default_town['город'] if default_town else '')
+        self.city.trace("w", self.on_select_city)
 
         for town in data_towns:
             radiobutton = tk.Radiobutton(self.scrollable_frame, font=('Calibri', 14), text=town['город'],
-                                         variable=self.var2,
+                                         variable=self.city,
                                          value=town['город'])
             radiobutton.pack(anchor="w")
             radiobutton.bind("<MouseWheel>", self._on_mousewheel)
@@ -1731,24 +1783,24 @@ class Search(tk.Toplevel):
         self.calendar2.bind("<<DateEntrySelected>>")
         self.calendar2.pack()
 
-        self.frame11 = tk.Frame(borderwidth=1)
-        self.entry_text11 = tk.StringVar()
-        self.entry11 = tk.Entry(toolbar5, textvariable=self.entry_text11, width=33)
-        self.entry11.bind('<KeyRelease>', self.check_input_11)
-        self.entry11.pack()
-        self.listbox_values11 = tk.Variable()
+        self.frame_search = tk.Frame(borderwidth=1)
+        self.entry_text_address = tk.StringVar()
+        self.entry_for_address = tk.Entry(toolbar5, textvariable=self.entry_text_address, width=33)
+        self.entry_for_address.bind('<KeyRelease>', self.check_input_address)
+        self.entry_for_address.pack()
+        self.value_addresses = tk.Variable()
 
         # Создаем горизонтальный скроллбар
         self.scrollbar_x = tk.Scrollbar(toolbar5, orient=tk.HORIZONTAL)
         self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
 
-        self.listbox11 = tk.Listbox(toolbar5, listvariable=self.listbox_values11, height=15, width=25, font='Calibri 12')
-        self.listbox11.bind('<<ListboxSelect>>', self.on_change_selection_11)
-        self.listbox11.pack()
+        self.listbox_addresses = tk.Listbox(toolbar5, listvariable=self.value_addresses, height=15, width=25, font='Calibri 12')
+        self.listbox_addresses.bind('<<ListboxSelect>>', self.on_change_selection_11)
+        self.listbox_addresses.pack()
         # Связываем скроллбар с Listbox
-        self.listbox11.config(xscrollcommand=self.scrollbar_x.set)
-        self.scrollbar_x.config(command=self.listbox11.xview)
-        self.selected_city = self.var2.get()
+        self.listbox_addresses.config(xscrollcommand=self.scrollbar_x.set)
+        self.scrollbar_x.config(command=self.listbox_addresses.xview)
+        self.selected_city = self.city.get()
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
@@ -1767,15 +1819,15 @@ class Search(tk.Toplevel):
                                         JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
                                         JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
                                         WHERE {table_goroda}.город = '{self.selected_city}'
-                                        GROUP BY {table_street}.улица, {table_doma}.номер, {table_padik}.номер
-                                        ORDER BY {table_street}.улица, {table_doma}.номер, {table_padik}.номер;''')
+                                        GROUP BY {table_goroda}.id, {table_street}.улица, {table_doma}.номер, {table_padik}.номер
+                                        ORDER BY {table_goroda}.id, {table_street}.улица, {table_doma}.номер, {table_padik}.номер;''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
-                    self.listbox11.insert(tk.END, self.address_str)
+                    self.listbox_addresses.insert(tk.END, self.address_str)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.frame11.pack(side=tk.LEFT, anchor=tk.NW)
+        self.frame_search.pack(side=tk.LEFT, anchor=tk.NW)
         style = ttk.Style()
         # Создаем стиль для кнопки "Поиск" с зеленым цветом
         style.configure("Green.TButton", foreground="green", background="#50C878", font='Calibri 12')
@@ -1789,7 +1841,7 @@ class Search(tk.Toplevel):
         # Создание и размещение кнопки "Поиск" большого размера слева снизу
         btn_search = ttk.Button(toolbar7, text='Поиск', style="Green.TButton", command=self.destroy, width=20)
         btn_search.pack(side=tk.BOTTOM)  # Установить координаты, ширину и высоту
-        btn_search.bind('<Button-1>', lambda event: (self.view.search_records(self.var2, self.entry11.get(), self.calendar1.get(), self.calendar2.get())))
+        btn_search.bind('<Button-1>', lambda event: (self.view.search_records(self.city, self.entry_for_address.get(), self.calendar1.get(), self.calendar2.get())))
 
     def on_unmap(self, event):
         self.deiconify()  # Отменяем сворачивание дочернего окна
@@ -1802,18 +1854,12 @@ class Search(tk.Toplevel):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def on_select_city(self, *args):
-        selected_city = self.var2.get()
-
-    # def _on_mousewheel(self, event):
-    #     if event.num == 4 or event.delta > 0:
-    #         self.canvas.yview_scroll(-1, "units")
-    #     elif event.num == 5 or event.delta < 0:
-    #         self.canvas.yview_scroll(1, "units")
+        selected_city = self.city.get()
 
     def on_select_city(self, *args):
-        self.selected_city = self.var2.get()
+        self.selected_city = self.city.get()
         # Очистить Listbox перед добавлением новых улиц
-        self.listbox11.delete(0, tk.END)
+        self.listbox_addresses.delete(0, tk.END)
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
@@ -1829,14 +1875,14 @@ class Search(tk.Toplevel):
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"
-                    self.listbox11.insert(tk.END, self.address_str)
+                    self.listbox_addresses.insert(tk.END, self.address_str)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
         # =========================================================================
-    def check_input_11(self, _event=None):
-        self.selected_city = self.var2.get()
-        value = self.entry_text11.get().lower()
+    def check_input_address(self, _event=None):
+        self.selected_city = self.city.get()
+        changed_address = self.entry_text_address.get().lower()
         names = []
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
@@ -1856,19 +1902,19 @@ class Search(tk.Toplevel):
                     names.append(''.join(self.address_str).strip())
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        if value == '':  # Если поле ввода пустое, показываем все адреса
-            self.listbox_values11.set(names)
+        if changed_address == '':  # Если поле ввода пустое, показываем все адреса
+            self.value_addresses.set(names)
         else:  # Если введено что-то, показываем только подходящие по шаблону адреса
-            data = [item for item in names if value in item.lower()]
-            self.listbox_values11.set(data)
+            data = [item for item in names if changed_address in item.lower()]
+            self.value_addresses.set(data)
 
     def on_change_selection_11(self, event):
         self.selection = event.widget.curselection()
         if self.selection:
             self.index3 = self.selection[0]
             self.data3 = event.widget.get(self.index3)
-            self.entry_text11.set(self.data3)
-            self.check_input_11()
+            self.entry_text_address.set(self.data3)
+            self.check_input_address()
 
 
 # ==========================================================================================
@@ -1891,11 +1937,11 @@ class Comment(tk.Toplevel):
         self.btn_micro = ttk.Button(self, text='Сказать\U0001f3a4', command=self.on_microfon_button_click, width=12)
         self.btn_micro.place(x=275, y=8)
 
-        btn_cancel = ttk.Button(self, text='Отменить', command=self.destroy)
-        btn_cancel.place(x=135, y=175)
+        button_cancel = ttk.Button(self, text='Отменить', command=self.destroy)
+        button_cancel.place(x=135, y=175)
 
-        btn_search = ttk.Button(self, text='Сохранить', command=self.save_and_close)
-        btn_search.place(x=10, y=175)
+        button_search = ttk.Button(self, text='Сохранить', command=self.save_and_close)
+        button_search.place(x=10, y=175)
 
         self.t.bind("<Button-3>", self.show_menu)
         self.t.bind_all("<Control-v>", self.paste_text)
@@ -1954,7 +2000,6 @@ if __name__ == "__main__":
     table_uk = data['table_uk']
     table_zayavki = data['table_zayavki']
     table_workers = data['table_workers']
-
 
     time_format = "%d.%m.%Y, %H:%M"
 
