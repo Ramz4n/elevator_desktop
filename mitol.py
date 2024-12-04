@@ -231,7 +231,7 @@ class Main(tk.Frame):
         btn_start.pack(side=tk.BOTTOM)
         btn_stop = tk.Button(tool3, text='Остановленные лифты', bg='#FFB3AB', compound=tk.TOP,command=self.stop_lift, width=19, font=helv36)
         btn_stop.pack(side=tk.TOP)
-        btn_open_ = tk.Button(tool3, text='НЕ Закрытые заявки', bg='#4897FF', compound=tk.TOP,command=self.non_start_lift, width=19, font=helv36)
+        btn_open_ = tk.Button(tool3, text='Незакрытые заявки', bg='#4897FF', compound=tk.TOP,command=self.non_start_lift, width=19, font=helv36)
         btn_open_.pack(side=tk.BOTTOM)
         #=====================================================================================
         tool4 = tk.Frame(toolbar)
@@ -251,7 +251,7 @@ class Main(tk.Frame):
         self.on_button = Button(tool4, image=self.off, bd=0, command=self.switch)
         self.on_button.pack()
         btn_lineyka_close = tk.Button(tool5, text='Линейные закрытые', compound=tk.TOP,
-                              command=self.close_line_lift, width=19, font=helv36)
+                              command=self.close_line_lift, width=19, font=helv36, bg='#BE81FF')
         btn_lineyka_close.pack(side=tk.BOTTOM)
         btn_lineyka_open = tk.Button(tool5, text='Линейные открытые', compound=tk.TOP,
                                 command=self.open_line_lift, width=19, font=helv36)
@@ -336,6 +336,10 @@ class Main(tk.Frame):
         self.tree.pack(side="left", fill="both")
         self.on_select_city()
         Tooltip(self.tree)
+
+
+    def label_center_switch_name(self, name, color):
+        self.label_center.configure(text=f'{name}', bg=f'{color}')
 
     def clipboard(self):
         if self.tree.selection():
@@ -779,9 +783,10 @@ class Main(tk.Frame):
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
-    # ===НЕ ЗАКРЫТЫЕ ЗАЯВКИ==================================================================================
+    # ===НЕЗАКРЫТЫЕ ЗАЯВКИ==================================================================================
     def non_start_lift(self):
         try:
+            self.tree.tag_configure("Blue.Treeview", foreground="#1437FF")
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor()
                 cursor.execute(f'''SELECT z.Номер_заявки,
@@ -806,10 +811,7 @@ class Main(tk.Frame):
                                 order by z.id;''', (self.enabled.get(),))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
-                    if row[-4] == None and row[-1] < int((time.time()) - 86400):
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
-                    else:
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Yellow.Treeview',))
+                    self.tree.insert('', 'end', values=tuple(row), tags=('Blue.Treeview',))
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
@@ -850,6 +852,7 @@ class Main(tk.Frame):
     # ===ЗАКРЫТЫЕ ЛИНЕЙНЫЕ ЗАЯВКИ==================================================================================
     def close_line_lift(self):
         try:
+            self.tree.tag_configure("Violet.Treeview", foreground="#7B00B4")
             with closing(mariadb.connect(user=user, password=password, host=host, port=port,
                                          database=database)) as connection2:
                 cursor = connection2.cursor()
@@ -875,7 +878,7 @@ class Main(tk.Frame):
                                 order by z.id;''', (self.enabled.get(),))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
-                    self.tree.insert('', 'end', values=tuple(row), tags=('Orange.Treeview',))
+                    self.tree.insert('', 'end', values=tuple(row), tags=('Violet.Treeview',))
 
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1026,7 +1029,8 @@ class Main(tk.Frame):
         self.month_label.config(text=self.months[(self.current_month_index) % 12])
         self.year_label.config(text=self.current_year_index)
         self.tree.tag_configure("Red.Treeview", foreground="red")
-        self.tree.tag_configure("Yellow.Treeview", foreground="#1437FF")
+        self.tree.tag_configure("Blue.Treeview", foreground="#1437FF")
+        self.tree.tag_configure("Violet.Treeview", foreground="#7B00B4")
         date_obj = datetime.datetime.now()
         formatted_date = date_obj.strftime('%d.%m.%Y')
         try:
@@ -1051,7 +1055,7 @@ class Main(tk.Frame):
                                     JOIN {table_doma} d ON z.id_дом = d.id
                                     JOIN {table_padik} p ON z.id_подъезд = p.id
                                     JOIN {table_workers} m ON z.id_механик = m.id
-                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%m') = ?
+                                    WHERE z.Причина <> "Линейная" and DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%m') = ?
                                 AND DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%Y') = ? and z.pc_id = ?
                                 order by z.id;''',
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
@@ -1060,9 +1064,7 @@ class Main(tk.Frame):
                     if row[-3] is None and int((datetime.datetime.strptime(row[1], time_format)).timestamp()) < int((time.time()) - 86400):
                         self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
                     elif row[-3] is None:
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Yellow.Treeview',))
-                    elif row[-3] != None and row[-5] == 'Остановлен':
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Green.Treeview',))
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Blue.Treeview',))
                     else:
                         self.tree.insert('', 'end', values=tuple(row))
                 self.tree.yview_moveto(1.0)
