@@ -627,7 +627,18 @@ class Main(tk.Frame):
     # ===ФУНКЦИЯ КОММЕНТИРОВАНИЯ==================================================
     def open_comment(self, event):
         if self.tree.selection():
-            Comment()
+            try:
+                with closing(mariadb.connect(user=user, password=password, host=host, port=port,
+                                             database=database)) as connection2:
+                    cursor = connection2.cursor()
+                    selected_item_id = self.tree.selection()[0]  # Получаем ID выбранного элемента
+                    item_id = self.tree.set(selected_item_id, '#11')
+                    cursor.execute(f'''select Комментарий from {table_zayavki} WHERE ID=?''', (item_id,))
+                    connection2.commit()
+                    now = cursor.fetchone()
+                    Comment(now)
+            except mariadb.Error as e:
+                showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         else:
             mb.showerror("Ошибка","Строка не выбрана")
             return
@@ -1910,8 +1921,9 @@ class Search(tk.Toplevel):
 
 # ==========================================================================================
 class Comment(tk.Toplevel):
-    def __init__(self):
+    def __init__(self, now):
         super().__init__()
+        self.now = now
         self.init_comm()
         self.view = app
         self.speech_recorder = Speech_recorder()
@@ -1920,9 +1932,8 @@ class Comment(tk.Toplevel):
         self.title('Комментировать')
         self.geometry('360x230+400+300')
         self.resizable(False, False)
-        self.frame123 = tk.Frame(borderwidth=1)
-        self.frame123.pack(side=tk.TOP)
         self.t = Text(self, height=10, width=30)
+        self.t.insert(tk.END, self.now[0])  # Вставляем строку
         self.t.place(x=10, y=10)
 
         self.btn_micro = ttk.Button(self, text='Сказать\U0001f3a4', command=self.on_microfon_button_click, width=12)
