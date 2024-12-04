@@ -1,34 +1,23 @@
-from tkinter import ttk
+from tkinter import ttk, messagebox
 import tkinter as tk
-from tkinter import filedialog as fd
 from tkinter import *
 import tkinter.font as tkFont
 from tkinter import messagebox as mb
 from tkinter.messagebox import showinfo, askyesno
 import mariadb
 import datetime
-from datetime import date, timedelta
 import time
 import pandas as pd
 import subprocess
 from contextlib import closing
-import fileinput
 from tkcalendar import DateEntry
-from PIL import ImageTk, Image
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import matplotlib.pyplot as plt
 import babel.numbers
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
 import json
-from openpyxl import load_workbook
 import pymysql
 import sys
-import sqlite3
 from speech import Speech_recorder
-import timeit
-
+import threading
 
 class Main(tk.Frame):
     def __init__(self, root):
@@ -41,6 +30,10 @@ class Main(tk.Frame):
         self.res = 0
 
     def init_main(self):
+        with open('config.json', 'r') as file:
+            data = json.loads(file.read())
+
+        self.pc_id = data['pc_id']
         m = Menu(root)
         root.config(menu=m)
         fm = Menu(m, font=20)
@@ -63,7 +56,7 @@ class Main(tk.Frame):
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''select w.ФИО from {table_zayavki} z
                 JOIN {table_workers} w ON z.id_диспетчер = w.id
-                where pc_id={pc_id}
+                where pc_id={self.pc_id}
                 ORDER BY z.id DESC LIMIT 1''')
                 data_worker = cursor.fetchone()
         except mariadb.Error as e:
@@ -247,7 +240,7 @@ class Main(tk.Frame):
         tool5.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
         self.is_on = True
         self.enabled = IntVar()
-        self.enabled.set(pc_id)
+        self.enabled.set(self.pc_id)
         self.my_label = Label(tool4,
                          text="Мои заявки",
                          fg="green",
@@ -401,15 +394,15 @@ class Main(tk.Frame):
         if self.is_on:
             self.on_button.config(image=self.on)
             self.my_label.config(text="Чужие заявки", fg="red")
-            new_value = (self.enabled.get() % len(pc)) + 1
-            self.enabled.set(new_value)
+            self.pc_id = (self.enabled.get() % len(pc)) + 1
+            self.enabled.set(self.pc_id)
             self.view_records()
             self.is_on = False
         else:
             self.on_button.config(image=self.off)
             self.my_label.config(text="Мои заявки", fg="green")
-            new_value = (self.enabled.get() % len(pc))  + 1
-            self.enabled.set(new_value)
+            self.pc_id = (self.enabled.get() % len(pc))  + 1
+            self.enabled.set(self.pc_id)
             self.view_records()
             self.is_on = True
 
@@ -801,8 +794,7 @@ class Main(tk.Frame):
                                        m.ФИО,
                                        FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                        комментарий,
-                                       z.id,
-                                       z.Дата_заявки
+                                       z.id
                                 FROM {table_zayavki} z
                                 JOIN {table_workers} w ON z.id_диспетчер = w.id
                                 JOIN {table_goroda} g ON z.id_город = g.id
@@ -838,8 +830,7 @@ class Main(tk.Frame):
                                        m.ФИО,
                                        FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                        комментарий,
-                                       z.id,
-                                       z.Дата_заявки
+                                       z.id
                                 FROM {table_zayavki} z
                                 JOIN {table_workers} w ON z.id_диспетчер = w.id
                                 JOIN {table_goroda} g ON z.id_город = g.id
@@ -872,8 +863,7 @@ class Main(tk.Frame):
                                        m.ФИО,
                                        FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                        комментарий,
-                                       z.id,
-                                       z.Дата_заявки
+                                       z.id
                                 FROM {table_zayavki} z
                                 JOIN {table_workers} w ON z.id_диспетчер = w.id
                                 JOIN {table_goroda} g ON z.id_город = g.id
@@ -942,8 +932,7 @@ class Main(tk.Frame):
                                    Причина,
                                    m.ФИО as Механик,
                                    FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
-                                   Комментарий,
-                                   z.id
+                                   Комментарий
                             FROM {table_zayavki} z
                             JOIN {table_workers} w ON z.id_диспетчер = w.id
                             JOIN {table_goroda} g ON z.id_город = g.id
@@ -1335,7 +1324,7 @@ class Main(tk.Frame):
                 gorod, street, dom, padik, lift_id = data_lifts[0]
                 val = (self.num_request, unix_time, self.selected_disp_id,
                        gorod, street, dom, padik, self.entry4.get(),
-                    self.prich5.get(), None, self.selected_meh_id, '', lift_id, pc_id)
+                    self.prich5.get(), None, self.selected_meh_id, '', lift_id, self.pc_id)
                 try:
                     with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                         cursor = connection.cursor()
@@ -1986,7 +1975,6 @@ if __name__ == "__main__":
     with open('config.json', 'r') as file:
         data = json.loads(file.read())
 
-    pc_id = data['pc_id']
     host = data['db_host']
     user = data['db_user']
     password = data['db_password']
