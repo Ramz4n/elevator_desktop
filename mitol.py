@@ -27,7 +27,6 @@ class Main(tk.Frame):
         root.resizable(False, True)
         self.init_main()
         self.view_records()
-        self.res = 0
 
     def init_main(self):
         with open('config.json', 'r') as file:
@@ -670,7 +669,7 @@ class Main(tk.Frame):
                             JOIN {table_doma} d ON z.id_дом = d.id
                             JOIN {table_padik} p ON z.id_подъезд = p.id
                             JOIN {table_workers} m ON z.id_механик = m.id
-                                WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
+                                WHERE z.Причина <> "Линейная" and FROM_UNIXTIME(Дата_заявки, '%m') = ?
                                 and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?
                                 order by z.id;''',
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
@@ -680,9 +679,7 @@ class Main(tk.Frame):
                             (time.time()) - 86400):
                         self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
                     elif row[-3] is None:
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Yellow.Treeview',))
-                    elif row[-3] != None and row[-5] == 'Остановлен':
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Green.Treeview',))
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Blue.Treeview',))
                     else:
                         self.tree.insert('', 'end', values=tuple(row))
                 connection.commit()
@@ -718,7 +715,7 @@ class Main(tk.Frame):
                             JOIN {table_doma} d ON z.id_дом = d.id
                             JOIN {table_padik} p ON z.id_подъезд = p.id
                             JOIN {table_workers} m ON z.id_механик = m.id
-                                WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
+                                WHERE z.Причина <> "Линейная" and FROM_UNIXTIME(Дата_заявки, '%m') = ?
                                 and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?
                                 order by z.id;''',
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',
@@ -729,9 +726,7 @@ class Main(tk.Frame):
                             (time.time()) - 86400):
                         self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
                     elif row[-3] is None:
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Yellow.Treeview',))
-                    elif row[-3] != None and row[-5] == 'Остановлен':
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Green.Treeview',))
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Blue.Treeview',))
                     else:
                         self.tree.insert('', 'end', values=tuple(row))
                 connection.commit()
@@ -791,6 +786,7 @@ class Main(tk.Frame):
                 for row in cursor.fetchall():
                     self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
                     connection.commit()
+                self.tree.yview_moveto(1.0)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
@@ -823,6 +819,7 @@ class Main(tk.Frame):
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
                     self.tree.insert('', 'end', values=tuple(row), tags=('Blue.Treeview',))
+                self.tree.yview_moveto(1.0)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
@@ -856,6 +853,7 @@ class Main(tk.Frame):
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
                     self.tree.insert('', 'end', values=tuple(row), tags=('Orange.Treeview',))
+                self.tree.yview_moveto(1.0)
 
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -890,6 +888,7 @@ class Main(tk.Frame):
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
                     self.tree.insert('', 'end', values=tuple(row), tags=('Violet.Treeview',))
+                self.tree.yview_moveto(1.0)
 
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -926,6 +925,7 @@ class Main(tk.Frame):
                 for row in cursor.fetchall():
                     self.tree.insert('', 'end', values=row, tags=('Green.Treeview',))
                 connection.commit()
+                self.tree.yview_moveto(1.0)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
@@ -1029,7 +1029,6 @@ class Main(tk.Frame):
                 connection2.commit()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.view_records()
         msg = f"Комментарий добавлен!"
         mb.showinfo("Информация", msg)
 
@@ -1302,14 +1301,11 @@ class Main(tk.Frame):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
-                cursor.execute(f"SELECT COALESCE(MAX(Номер_заявки), 0) FROM {table_zayavki} WHERE DATE_FORMAT(FROM_UNIXTIME("
-                    f"Дата_заявки), '%Y-%m') = ?",
+                cursor.execute(f"SELECT COALESCE(MAX(Номер_заявки), 0) FROM {table_zayavki} "
+                               f"WHERE DATE_FORMAT(FROM_UNIXTIME(""Дата_заявки), '%Y-%m') = ?",
                     ((datetime.datetime.now()).strftime('%Y-%m'),))
-                self.res = cursor.fetchone()[0]
-                if self.res is None:
-                    self.num_request = 1
-                else:
-                    self.num_request = self.res + 1
+                number_application = cursor.fetchone()[0]
+                number_application += 1
                 #===========================================
                 data = self.entry_text3.get()
                 parts = data.split(',')
@@ -1335,7 +1331,7 @@ class Main(tk.Frame):
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
                 gorod, street, dom, padik, lift_id = data_lifts[0]
-                val = (self.num_request, unix_time, self.selected_disp_id,
+                val = (number_application, unix_time, self.selected_disp_id,
                        gorod, street, dom, padik, self.entry4.get(),
                     self.prich5.get(), None, self.selected_meh_id, '', lift_id, self.pc_id)
                 try:
@@ -1362,9 +1358,8 @@ class Main(tk.Frame):
                     showinfo('Информация', f"Ошибка при работе с базой данных123: {e}")
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        msg = f"Запись успешно добавлена! Её порядковый номер - {self.res + 1}"
+        msg = f"Запись успешно добавлена! Её порядковый номер - {number_application}"
         mb.showinfo("Информация", msg)
-        self.view_records()
         self.obnov()
 
     # ======ФУНКЦИЯ СПРОСА О ЗАКРЫТИИ ПРОГРАММЫ=================================================
@@ -1927,17 +1922,23 @@ class Comment(tk.Toplevel):
         self.init_comm()
         self.view = app
         self.speech_recorder = Speech_recorder()
+        self.is_recording = False
 
     def init_comm(self):
         self.title('Комментировать')
         self.geometry('360x230+400+300')
         self.resizable(False, False)
+
         self.t = Text(self, height=10, width=30)
-        self.t.insert(tk.END, self.now[0])  # Вставляем строку
+        self.t.insert(tk.END, self.now[0])
         self.t.place(x=10, y=10)
 
         self.btn_micro = ttk.Button(self, text='Сказать\U0001f3a4', command=self.on_microfon_button_click, width=12)
         self.btn_micro.place(x=275, y=8)
+
+        # Метка для инструкций, расположенная под кнопкой
+        self.instruction_label = ttk.Label(self, text='', wraplength=300)
+        self.instruction_label.place(x=275, y=40)  # Положение метки под кнопкой
 
         button_cancel = ttk.Button(self, text='Отменить', command=self.destroy)
         button_cancel.place(x=135, y=175)
@@ -1948,14 +1949,32 @@ class Comment(tk.Toplevel):
         self.t.bind("<Button-3>", self.show_menu)
         self.t.bind_all("<Control-v>", self.paste_text)
 
-
     def on_microfon_button_click(self):
+        if self.is_recording:  # Проверяем, идет ли уже запись
+            return
+
+        self.is_recording = True
         self.btn_micro.config(text='Говорите...')
+        self.instruction_label.config(text='Говорите', foreground='red')
+        self.btn_micro.config(state=tk.DISABLED)
         self.update()
+
         result = self.speech_recorder.speech()
-        self.t.insert(tk.END, result)
+        cleaned_result = result.replace("Не удалось распознать речь", "").strip()
+
+        current_text = self.t.get("1.0", tk.END).strip()
+
+        # Вставляем очищенный результат в текстовое поле
+        if cleaned_result:
+            if current_text:  # Проверяем, есть ли уже текст
+                self.t.insert(tk.END, ' ' + cleaned_result)  # Добавляем пробел перед новым текстом
+            else:
+                self.t.insert(tk.END, cleaned_result)  # Вставляем текст без пробела
+
+        self.btn_micro.config(state=tk.NORMAL)
         self.btn_micro.config(text='Сказать\U0001f3a4')
-        self.update()
+        self.instruction_label.config(text='')  # Сбрасываем текст инструкции
+        self.is_recording = False
 
     def save_and_close(self):
         self.view.comment(self.t.get("1.0", tk.END).strip())
@@ -2007,7 +2026,7 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = Main(root)
     app.pack()
-    root.title("МиТОЛ")
+    root.title("Электронный журнал")
     root.geometry("1920x1080")
     root.iconphoto(False, tk.PhotoImage(file='mitol.png'))
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
