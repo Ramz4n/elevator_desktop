@@ -1,23 +1,4 @@
-from tkinter import ttk, messagebox
-import tkinter as tk
-from tkinter import *
-import tkinter.font as tkFont
-from tkinter import messagebox as mb
-from tkinter.messagebox import showinfo, askyesno
-import mariadb
-import datetime
-import time
-import pandas as pd
-import subprocess
-from contextlib import closing
-from tkcalendar import DateEntry
-import babel.numbers
-from sqlalchemy import create_engine, text
-import json
-import pymysql
-import sys
-from speech import Speech_recorder
-import threading
+from imports import *
 
 class Main(tk.Frame):
     def __init__(self, root):
@@ -27,6 +8,7 @@ class Main(tk.Frame):
         root.resizable(False, True)
         self.init_main()
         self.view_records()
+
 
     def init_main(self):
         with open('config.json', 'r') as file:
@@ -69,11 +51,11 @@ class Main(tk.Frame):
         toolbar3 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar3.pack(side=tk.LEFT, fill=tk.Y)
         self.disp = tk.StringVar(value=data)
-        self.label3 = tk.Label(toolbar3, borderwidth=1, width=18, relief="raised", text="Диспетчер", font='Calibri 14 bold')
+        self.label3 = tk.Label(toolbar3, borderwidth=1, width=18, relief="raised", text="Диспетчер", font='Calibri 16 bold')
         frame3 = tk.Frame(toolbar3)
-        self.label3.pack(side=tk.TOP)
+        self.label3.pack(side=tk.TOP, fill=tk.X)
         for d in data_workers:
-            lang_btn3 = tk.Radiobutton(toolbar3, text=d['ФИО'], value=d, variable=self.disp, font='Calibri  13')
+            lang_btn3 = tk.Radiobutton(toolbar3, text=d['ФИО'], value=d, variable=self.disp, font='Calibri  16')
             lang_btn3.pack(anchor=tk.NW, expand=True)
             if d['ФИО'] == self.disp.get():
                 lang_btn3.select()
@@ -96,8 +78,8 @@ class Main(tk.Frame):
 
         default_town = data_towns[0] if data_towns else ''
 
-        self.label2 = tk.Label(toolbar4, borderwidth=1, width=21, relief="raised", text="Город", font='Calibri 14 bold')
-        self.label2.pack(side=tk.TOP)
+        self.label2 = tk.Label(toolbar4, borderwidth=1, width=21, relief="raised", text="Город", font='Calibri 16 bold')
+        self.label2.pack(side=tk.TOP, fill=tk.X)
 
         self.canvas = tk.Canvas(toolbar4, width=100)
         self.scrollbar = ttk.Scrollbar(toolbar4, orient="vertical", command=self.canvas.yview)
@@ -124,7 +106,7 @@ class Main(tk.Frame):
         self.city.trace("w", self.on_select_city)
 
         for town in data_towns:
-            radiobutton = tk.Radiobutton(self.scrollable_frame, font=('Calibri', 14), text=town['город'],
+            radiobutton = tk.Radiobutton(self.scrollable_frame, font=('Calibri', 16), text=town['город'],
                                          variable=self.city,
                                          value=town['город'])
             radiobutton.pack(anchor="w")
@@ -135,16 +117,16 @@ class Main(tk.Frame):
         toolbar5 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar5.pack(side=tk.LEFT, fill=tk.Y)
 
-        self.label3 = tk.Label(toolbar5, borderwidth=1, width=21, relief="raised", text="Адрес", font='Calibri 14 bold')
+        self.label3 = tk.Label(toolbar5, borderwidth=1, width=21, relief="raised", text="Адрес", font='Calibri 16 bold')
         self.frame3 = tk.Frame()
         self.entry_text3 = tk.StringVar()
         self.entry3 = tk.Entry(toolbar5, textvariable=self.entry_text3, width=33)
         self.entry3.bind('<KeyRelease>', self.check_input_address)
-        self.label3.pack(side=tk.TOP)
-        self.entry3.pack(side=tk.TOP, expand=True)
+        self.label3.pack(side=tk.TOP, fill=tk.X)
+        self.entry3.pack(side=tk.TOP, expand=True, fill=tk.X)
 
         self.listbox_values = tk.Variable()
-        self.listbox = tk.Listbox(toolbar5, listvariable=self.listbox_values, width=25, font='Calibri 12')
+        self.listbox = tk.Listbox(toolbar5, listvariable=self.listbox_values, width=25, font='Calibri 16')
         self.listbox.bind('<<ListboxSelect>>', self.on_change_selection_address)
 
         # Создаем горизонтальный скроллбар
@@ -160,44 +142,62 @@ class Main(tk.Frame):
         # ======4 БЛОК КОД С ТИПАМИ ЛИФТОВ==================================================================
         toolbar6 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar6.pack(side=tk.LEFT, fill=tk.Y)
-        self.label4 = tk.Label(toolbar6, borderwidth=1, width=12, relief="raised", text="Тип лифта", font='Calibri 14 bold')
+        self.label4 = tk.Label(toolbar6, borderwidth=1, width=12, relief="raised", text="Тип лифта", font='Calibri 16 bold')
         self.frame4 = tk.Frame()
         self.entry_text4 = tk.StringVar()
         self.entry4 = tk.Entry(toolbar6, textvariable=self.entry_text4, width=18)
         self.entry4.bind('<KeyRelease>', self.check_input_lifts)
-        self.label4.pack(side=tk.TOP)
-        self.entry4.pack(side=tk.TOP, expand=True)
+        self.label4.pack(side=tk.TOP, fill=tk.X)
+        self.entry4.pack(side=tk.TOP, expand=True, fill=tk.X)
         self.listbox_values_type = tk.Variable()
-        self.listbox_type = tk.Listbox(toolbar6, listvariable=self.listbox_values_type, width=14, font='Calibri 12')
+        self.listbox_type = tk.Listbox(toolbar6, listvariable=self.listbox_values_type, width=14, font='Calibri 16')
         self.listbox_type.bind('<<ListboxSelect>>', self.on_change_selection_lift)
-        self.listbox_type.pack(side=tk.TOP, expand=True)
-        self.frame4.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
+
+        # Создаем горизонтальный скроллбар
+        self.scrollbar_x = tk.Scrollbar(toolbar6, orient=tk.HORIZONTAL)
+        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # Связываем скроллбар с Listbox
+        self.listbox_type.config(xscrollcommand=self.scrollbar_x.set)
+        self.scrollbar_x.config(command=self.listbox_type.xview)
+
+        self.listbox_type.pack(side=tk.TOP, expand=True, fill=tk.X)
+        self.frame4.pack(side=tk.LEFT, anchor=tk.NW, expand=True, fill=tk.X)
         # ======5 БЛОК ПРИЧИНА ОСТАНОВКИ ============================================
         toolbar7 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar7.pack(side=tk.LEFT, fill=tk.Y)
         frame5 = tk.Frame()
-        label5 = tk.Label(toolbar7, borderwidth=1, width=14, relief="raised", text="Причина", font='Calibri 14 bold')
-        label5.pack()
+        label5 = tk.Label(toolbar7, borderwidth=1, width=14, relief="raised", text="Причина", font='Calibri 16 bold')
+        label5.pack(fill=tk.X)
         self.prichina = ['Неисправность', 'Застревание', 'Остановлен', 'Связь', 'Линейная']
         self.prich5 = tk.StringVar(value='?')
         for pr in self.prichina:
-            lang_btn3 = tk.Radiobutton(toolbar7, text=pr, value=pr, variable=self.prich5, font='Calibri  13')
+            lang_btn3 = tk.Radiobutton(toolbar7, text=pr, value=pr, variable=self.prich5, font='Calibri  16')
             lang_btn3.pack(anchor=tk.NW, expand=True)
         frame5.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
         # ======6 БЛОК FIO МЕХАНИКА =====================================================
         toolbar9 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar9.pack(side=tk.LEFT, fill=tk.Y)
-        self.label7 = tk.Label(toolbar9, borderwidth=1, width=18, relief="raised", text="ФИО механика", font='Calibri  14 bold')
+        self.label7 = tk.Label(toolbar9, borderwidth=1, width=18, relief="raised", text="ФИО механика", font='Calibri  16 bold')
         self.frame7 = tk.Frame()
         self.entry_text7 = tk.StringVar(value='')
         self.entry7 = tk.Entry(toolbar9, textvariable=self.entry_text7, width=28)
         self.entry7.bind('<KeyRelease>', self.check_input_fio)
-        self.label7.pack(side=tk.TOP)
-        self.entry7.pack(side=tk.TOP, expand=True)
+        self.label7.pack(side=tk.TOP, fill=tk.X)
+        self.entry7.pack(side=tk.TOP, expand=True, fill=tk.X)
         self.listbox_values7 = tk.Variable()
-        self.listbox7 = tk.Listbox(toolbar9, width=21, listvariable=self.listbox_values7, font='Calibri 12')
+        self.listbox7 = tk.Listbox(toolbar9, width=21, listvariable=self.listbox_values7, font='Calibri 16')
         self.listbox7.bind('<<ListboxSelect>>', self.on_change_selection_fio)
-        self.listbox7.pack(side=tk.TOP, expand=True)
+
+        # Создаем горизонтальный скроллбар
+        self.scrollbar_x = tk.Scrollbar(toolbar9, orient=tk.HORIZONTAL)
+        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # Связываем скроллбар с Listbox
+        self.listbox7.config(xscrollcommand=self.scrollbar_x.set)
+        self.scrollbar_x.config(command=self.listbox7.xview)
+
+        self.listbox7.pack(side=tk.TOP, expand=True, fill=tk.X)
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
@@ -270,43 +270,40 @@ class Main(tk.Frame):
         # =======ИНФО СПРАВА О ПОДСЧЁТАХ============================================================================
         self.calendar = DateEntry(toolbar2, locale='ru_RU', font=1)
         self.calendar.bind("<<DateEntrySelected>>", self.print_info)
-        self.calendar.pack(side=tk.TOP, anchor=tk.N)
-        self.label_info_bd = tk.Label(toolbar2, borderwidth=1, width=50, height=10, relief="raised", text="", font='Times 13')
-        style2 = ttk.Style()
-        style2.configure("mystyle.Treeview", highlightthickness=0, bd=0, font=('Helvetica', 12))
-        style2.configure("mystyle.Treeview.Heading", font=('Helvetica', 12, 'bold'))
-        style2.layout("mystyle.Treeview", [('mystyle.Treeview.treearea', {'sticky': 'nswe'})])
+        self.calendar.pack(side=tk.TOP, anchor=tk.NW)
+        self.label_info_bd = tk.Label(toolbar2, borderwidth=1, width=50, height=10, relief="raised", text="", font='Times 12')
+
         self.tree2 = ttk.Treeview(self.label_info_bd, style="mystyle.Treeview", columns=('Город', 'Застр', 'Неиспр', 'Кол_во'),
                                   height=12, show='headings')
-        self.tree2.column('Город', width=115, anchor=tk.CENTER)
-        self.tree2.column('Застр', width=120, anchor=tk.CENTER)
-        self.tree2.column('Неиспр', width=145, anchor=tk.CENTER)
-        self.tree2.column('Кол_во', width=70, anchor=tk.CENTER)
+        self.tree2.column('Город', width=100, anchor=tk.CENTER)
+        self.tree2.column('Застр', width=100, anchor=tk.CENTER)
+        self.tree2.column('Неиспр', width=100, anchor=tk.CENTER)
+        self.tree2.column('Кол_во', width=90, anchor=tk.CENTER)
 
         self.tree2.heading('Город', text='Город')
-        self.tree2.heading('Застр', text='Застреваний')
-        self.tree2.heading('Неиспр', text='Неисправностей')
+        self.tree2.heading('Застр', text='Застрев')
+        self.tree2.heading('Неиспр', text='Неиспр')
         self.tree2.heading('Кол_во', text='Кол-во')
         self.tree2.pack(side="left", fill="both")
         self.label_info_bd.pack(side=tk.TOP)
         # =======ВИЗУАЛ БАЗЫ ДАННЫХ =========================================================================
         style = ttk.Style()
-        style.configure("mystyle.Treeview", highlightthickness=0, bd=0, font=('Helvetica', 12))
-        style.configure("mystyle.Treeview.Heading", font=('Helvetica', 12, 'bold'))
+        style.configure("mystyle.Treeview", highlightthickness=0, bd=0, font=('Helvetica', 16), rowheight=23)
+        style.configure("mystyle.Treeview.Heading", font=('Helvetica', 16, 'bold'))
         style.layout("mystyle.Treeview", [('mystyle.Treeview.treearea', {'sticky': 'nswe'})])
         self.tree = ttk.Treeview(self, style="mystyle.Treeview",
         columns=('ID', 'date', 'dispetcher', 'town', 'adress', 'type_lift', 'prichina', 'fio', 'date_to_go', 'comment', 'id2'),
                                  height=50, show='headings')
-        self.tree.bind("<Button-3>", self.show_menu)
+        #self.tree.bind("<Button-3>", self.menu_errors.show_menu)
         self.tree.column('ID', width=50, anchor=tk.CENTER, stretch=False)
-        self.tree.column('date', width=135, anchor=tk.CENTER, stretch=False)
-        self.tree.column('dispetcher', width=120, anchor=tk.CENTER, stretch=False)
-        self.tree.column('town', width=120, anchor=tk.CENTER, stretch=False)
-        self.tree.column('adress', width=250, anchor=tk.CENTER, stretch=False)
-        self.tree.column('type_lift', width=100, anchor=tk.CENTER, stretch=False)
-        self.tree.column('prichina', width=120, anchor=tk.CENTER, stretch=False)
-        self.tree.column('fio', width=170, anchor=tk.CENTER, stretch=False)
-        self.tree.column('date_to_go', width=135, anchor=tk.CENTER, stretch=False)
+        self.tree.column('date', width=185, anchor=tk.W, stretch=False)
+        self.tree.column('dispetcher', width=120, anchor=tk.W, stretch=False)
+        self.tree.column('town', width=120, anchor=tk.W, stretch=False)
+        self.tree.column('adress', width=280, anchor=tk.W, stretch=False)
+        self.tree.column('type_lift', width=115, anchor=tk.W, stretch=False)
+        self.tree.column('prichina', width=130, anchor=tk.W, stretch=False)
+        self.tree.column('fio', width=170, anchor=tk.W, stretch=False)
+        self.tree.column('date_to_go', width=185, anchor=tk.W, stretch=False)
         self.tree.column("comment", width=1000, anchor=tk.W, stretch=True)
         self.tree.column("id2", width=0, anchor=tk.CENTER)
         self.tree.column('#0', stretch=False)
@@ -322,6 +319,13 @@ class Main(tk.Frame):
         self.tree.heading('date_to_go', text='Дата запуска')
         self.tree.heading('comment', text='Комментарий', anchor=tk.W)
         self.tree.heading('id2', text='')
+
+        # Создаем экземпляр класса Menu_errors и передаем ему виджет tree
+        self.menu_errors = Menu_errors(self.tree, self.clipboard, self.lojnaya, self.error,
+                                       self.delete, self.time_to, self.open_comment, self.edit)
+
+        # Привязываем событие правой кнопки мыши к методу show_menu
+        self.tree.bind("<Button-3>", self.menu_errors.show_menu)
 
         self.scrollbar2 = tk.Scrollbar(self, orient=tk.VERTICAL)
         self.tree.configure(yscrollcommand=self.scrollbar2.set)
@@ -436,48 +440,48 @@ class Main(tk.Frame):
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
-    def show_menu(self, event):
-        menu = tk.Menu(self.tree, tearoff=False, font=20)
-        settings_menu = tk.Menu(tearoff=False, font=20)
-        settings_menu.add_command(label="ошибка а0", command=lambda: self.error("ошибка а0"))
-        settings_menu.add_command(label="ошибка a2", command=lambda: self.error("ошибка a2"))
-        settings_menu.add_command(label="ошибка 43", command=lambda: self.error("ошибка 43"))
-        settings_menu.add_command(label="ошибка 44", command=lambda: self.error("ошибка 44"))
-        settings_menu.add_command(label="ошибка 45", command=lambda: self.error("ошибка 45"))
-        settings_menu.add_command(label="ошибка 46", command=lambda: self.error("ошибка 46"))
-        settings_menu.add_command(label="ошибка 48", command=lambda: self.error("ошибка 48"))
-        settings_menu.add_command(label="ошибка 49", command=lambda: self.error("ошибка 49"))
-        settings_menu.add_command(label="ошибка 50", command=lambda: self.error("ошибка 50"))
-        settings_menu.add_command(label="ошибка 52", command=lambda: self.error("ошибка 52"))
-        settings_menu.add_command(label="ошибка 53", command=lambda: self.error("ошибка 53"))
-        settings_menu.add_command(label="ошибка 56", command=lambda: self.error("ошибка 56"))
-        settings_menu.add_command(label="ошибка 57", command=lambda: self.error("ошибка 57"))
-        settings_menu.add_command(label="ошибка 58", command=lambda: self.error("ошибка 58"))
-        settings_menu.add_command(label="ошибка 59", command=lambda: self.error("ошибка 59"))
-        settings_menu.add_command(label="ошибка 60", command=lambda: self.error("ошибка 60"))
-        settings_menu.add_command(label="ошибка 64", command=lambda: self.error("ошибка 64"))
-        settings_menu.add_command(label="ошибка 67", command=lambda: self.error("ошибка 67"))
-        settings_menu.add_command(label="ошибка 70", command=lambda: self.error("ошибка 70"))
-        settings_menu.add_command(label="ошибка 71", command=lambda: self.error("ошибка 71"))
-        settings_menu.add_command(label="ошибка 96", command=lambda: self.error("ошибка 96"))
-        settings_menu.add_command(label="ошибка 99", command=lambda: self.error("ошибка 99"))
-        settings_menu.add_command(label="Частотник", command=lambda: self.error("Частотник"))
-        settings_menu.add_command(label="До наладчика", command=lambda: self.error("До наладчика"))
-        settings_menu.add_command(label="Ревизия/инспекция", command=lambda: self.error("Лифт в ревизии/инспекции"))
-        settings_menu.add_command(label="Аварийная блокировка", command=lambda: self.error("Аварийная блокировка"))
-        menu.add_cascade(label="Ошибка", command=lambda: self.error("Ошибка"), menu=settings_menu)
-        menu.add_command(label="Копировать заявку", command=lambda: self.clipboard())
-        menu.add_command(label="Редактировать", command=lambda: self.edit("Редактировать"))
-        menu.add_command(label="Отметить Время", command=lambda: self.time_to("Отметить Время"))
-        menu.add_command(label="Комментировать", command=lambda: self.open_comment("Комментировать"))
-        menu.add_separator()
-        menu.add_command(label="Ложная Заявка", command=lambda: self.lojnaya("Ложная Заявка"))
-        menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.error("Отсутствие электроэнергии"))
-        menu.add_command(label="Пожарная сигнализация", command=lambda: self.error("Пожарная сигнализация"))
-        menu.add_command(label="Вандальные действия", command=lambda: self.error("Вандальные действия"))
-        menu.add_separator()
-        menu.add_command(label="Удалить Заявку", command=lambda: self.delete("Удалить Заявку"))
-        menu.post(event.x_root, event.y_root)
+    # def show_menu(self, event):
+    #     menu = tk.Menu(self.tree, tearoff=False, font=20)
+    #     settings_menu = tk.Menu(tearoff=False, font=20)
+    #     settings_menu.add_command(label="ошибка а0", command=lambda: self.error("ошибка а0"))
+    #     settings_menu.add_command(label="ошибка a2", command=lambda: self.error("ошибка a2"))
+    #     settings_menu.add_command(label="ошибка 43", command=lambda: self.error("ошибка 43"))
+    #     settings_menu.add_command(label="ошибка 44", command=lambda: self.error("ошибка 44"))
+    #     settings_menu.add_command(label="ошибка 45", command=lambda: self.error("ошибка 45"))
+    #     settings_menu.add_command(label="ошибка 46", command=lambda: self.error("ошибка 46"))
+    #     settings_menu.add_command(label="ошибка 48", command=lambda: self.error("ошибка 48"))
+    #     settings_menu.add_command(label="ошибка 49", command=lambda: self.error("ошибка 49"))
+    #     settings_menu.add_command(label="ошибка 50", command=lambda: self.error("ошибка 50"))
+    #     settings_menu.add_command(label="ошибка 52", command=lambda: self.error("ошибка 52"))
+    #     settings_menu.add_command(label="ошибка 53", command=lambda: self.error("ошибка 53"))
+    #     settings_menu.add_command(label="ошибка 56", command=lambda: self.error("ошибка 56"))
+    #     settings_menu.add_command(label="ошибка 57", command=lambda: self.error("ошибка 57"))
+    #     settings_menu.add_command(label="ошибка 58", command=lambda: self.error("ошибка 58"))
+    #     settings_menu.add_command(label="ошибка 59", command=lambda: self.error("ошибка 59"))
+    #     settings_menu.add_command(label="ошибка 60", command=lambda: self.error("ошибка 60"))
+    #     settings_menu.add_command(label="ошибка 64", command=lambda: self.error("ошибка 64"))
+    #     settings_menu.add_command(label="ошибка 67", command=lambda: self.error("ошибка 67"))
+    #     settings_menu.add_command(label="ошибка 70", command=lambda: self.error("ошибка 70"))
+    #     settings_menu.add_command(label="ошибка 71", command=lambda: self.error("ошибка 71"))
+    #     settings_menu.add_command(label="ошибка 96", command=lambda: self.error("ошибка 96"))
+    #     settings_menu.add_command(label="ошибка 99", command=lambda: self.error("ошибка 99"))
+    #     settings_menu.add_command(label="Частотник", command=lambda: self.error("Частотник"))
+    #     settings_menu.add_command(label="До наладчика", command=lambda: self.error("До наладчика"))
+    #     settings_menu.add_command(label="Ревизия/инспекция", command=lambda: self.error("Лифт в ревизии/инспекции"))
+    #     settings_menu.add_command(label="Аварийная блокировка", command=lambda: self.error("Аварийная блокировка"))
+    #     menu.add_cascade(label="Ошибка", command=lambda: self.error("Ошибка"), menu=settings_menu)
+    #     menu.add_command(label="Копировать заявку", command=lambda: self.clipboard())
+    #     menu.add_command(label="Редактировать", command=lambda: self.edit("Редактировать"))
+    #     menu.add_command(label="Отметить Время", command=lambda: self.time_to("Отметить Время"))
+    #     menu.add_command(label="Комментировать", command=lambda: self.open_comment("Комментировать"))
+    #     menu.add_separator()
+    #     menu.add_command(label="Ложная Заявка", command=lambda: self.lojnaya("Ложная Заявка"))
+    #     menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.error("Отсутствие электроэнергии"))
+    #     menu.add_command(label="Пожарная сигнализация", command=lambda: self.error("Пожарная сигнализация"))
+    #     menu.add_command(label="Вандальные действия", command=lambda: self.error("Вандальные действия"))
+    #     menu.add_separator()
+    #     menu.add_command(label="Удалить Заявку", command=lambda: self.delete("Удалить Заявку"))
+    #     menu.post(event.x_root, event.y_root)
 
     # ===РЕДАКТИРОВАТЬ========================================================================
     def edit(self, event):
@@ -1029,6 +1033,7 @@ class Main(tk.Frame):
                 connection2.commit()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+        self.view_records()
         msg = f"Комментарий добавлен!"
         mb.showinfo("Информация", msg)
 
@@ -1281,6 +1286,11 @@ class Main(tk.Frame):
         self.ala = self.prich5.get()
         fio_excel = self.entry_text7.get()
 
+
+    def check_lineyki(self, adres_info_lift):
+
+        return False
+
     def sql_insert(self):
         selected_disp_str = eval(self.disp.get())
         self.selected_disp_id = selected_disp_str['id']
@@ -1328,6 +1338,10 @@ class Main(tk.Frame):
                             AND {table_doma}.номер = "{parts[1].strip()}" 
                             AND {table_padik}.номер = "{parts[2].strip()}" and тип_лифта="{self.entry_text4.get()}";''')
                         data_lifts = cursor.fetchall()
+                        if self.check_lineyki(data_lifts):
+                            print("точно создать заявку?")
+                        else:
+                            print('создаём заявку')
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
                 gorod, street, dom, padik, lift_id = data_lifts[0]
@@ -1950,7 +1964,7 @@ class Comment(tk.Toplevel):
         self.t.bind_all("<Control-v>", self.paste_text)
 
     def on_microfon_button_click(self):
-        if self.is_recording:  # Проверяем, идет ли уже запись
+        if self.is_recording:
             return
 
         self.is_recording = True
