@@ -40,7 +40,7 @@ class Menu_errors:
         menu.add_separator()
 
     def add_other_menu(self, menu):
-        menu.add_command(label="Ложная Заявка", command=lambda: self.lojnaya("Ложная Заявка"))
+        menu.add_command(label="Ложная Заявка", command=lambda: self.lojnaya("На момент осмотра, лифт находился в работе"))
         menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.error("Отсутствие электроэнергии"))
         menu.add_command(label="Пожарная сигнализация", command=lambda: self.error("Пожарная сигнализация"))
         menu.add_command(label="Вандальные действия", command=lambda: self.error("Вандальные действия"))

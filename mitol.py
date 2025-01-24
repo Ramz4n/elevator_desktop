@@ -137,6 +137,14 @@ class Main(tk.Frame):
         self.listbox.config(xscrollcommand=self.scrollbar_x.set)
         self.scrollbar_x.config(command=self.listbox.xview)
 
+        # Создаем вертикальный скроллбар
+        self.scrollbar_y = tk.Scrollbar(toolbar5, orient=tk.VERTICAL)
+        self.scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Связываем скроллбар с Listbox
+        self.listbox.config(yscrollcommand=self.scrollbar_y.set)
+        self.scrollbar_y.config(command=self.listbox.yview)
+
         self.listbox.pack(side=tk.TOP, expand=True)
         self.frame3.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
         # ======4 БЛОК КОД С ТИПАМИ ЛИФТОВ==================================================================
@@ -180,7 +188,7 @@ class Main(tk.Frame):
         toolbar9.pack(side=tk.LEFT, fill=tk.Y)
         self.label7 = tk.Label(toolbar9, borderwidth=1, width=18, relief="raised", text="ФИО механика", font='Calibri  16 bold')
         self.frame7 = tk.Frame()
-        self.entry_text7 = tk.StringVar(value='')
+        self.entry_text7 = tk.StringVar(value='Введите ФИО')
         self.entry7 = tk.Entry(toolbar9, textvariable=self.entry_text7, width=28)
         self.entry7.bind('<KeyRelease>', self.check_input_fio)
         self.label7.pack(side=tk.TOP, fill=tk.X)
@@ -196,6 +204,14 @@ class Main(tk.Frame):
         # Связываем скроллбар с Listbox
         self.listbox7.config(xscrollcommand=self.scrollbar_x.set)
         self.scrollbar_x.config(command=self.listbox7.xview)
+
+        # Создаем вертикальный скроллбар
+        self.scrollbar_y = tk.Scrollbar(toolbar9, orient=tk.VERTICAL)
+        self.scrollbar_y.pack(side=tk.RIGHT, fill=tk.X)
+
+        # Связываем скроллбар с Listbox
+        self.listbox7.config(yscrollcommand=self.scrollbar_y.set)
+        self.scrollbar_y.config(command=self.listbox7.yview)
 
         self.listbox7.pack(side=tk.TOP, expand=True, fill=tk.X)
         try:
@@ -294,7 +310,6 @@ class Main(tk.Frame):
         self.tree = ttk.Treeview(self, style="mystyle.Treeview",
         columns=('ID', 'date', 'dispetcher', 'town', 'adress', 'type_lift', 'prichina', 'fio', 'date_to_go', 'comment', 'id2'),
                                  height=50, show='headings')
-        #self.tree.bind("<Button-3>", self.menu_errors.show_menu)
         self.tree.column('ID', width=50, anchor=tk.CENTER, stretch=False)
         self.tree.column('date', width=185, anchor=tk.W, stretch=False)
         self.tree.column('dispetcher', width=120, anchor=tk.W, stretch=False)
@@ -439,49 +454,6 @@ class Main(tk.Frame):
                     self.listbox.insert(tk.END, self.address_str)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-
-    # def show_menu(self, event):
-    #     menu = tk.Menu(self.tree, tearoff=False, font=20)
-    #     settings_menu = tk.Menu(tearoff=False, font=20)
-    #     settings_menu.add_command(label="ошибка а0", command=lambda: self.error("ошибка а0"))
-    #     settings_menu.add_command(label="ошибка a2", command=lambda: self.error("ошибка a2"))
-    #     settings_menu.add_command(label="ошибка 43", command=lambda: self.error("ошибка 43"))
-    #     settings_menu.add_command(label="ошибка 44", command=lambda: self.error("ошибка 44"))
-    #     settings_menu.add_command(label="ошибка 45", command=lambda: self.error("ошибка 45"))
-    #     settings_menu.add_command(label="ошибка 46", command=lambda: self.error("ошибка 46"))
-    #     settings_menu.add_command(label="ошибка 48", command=lambda: self.error("ошибка 48"))
-    #     settings_menu.add_command(label="ошибка 49", command=lambda: self.error("ошибка 49"))
-    #     settings_menu.add_command(label="ошибка 50", command=lambda: self.error("ошибка 50"))
-    #     settings_menu.add_command(label="ошибка 52", command=lambda: self.error("ошибка 52"))
-    #     settings_menu.add_command(label="ошибка 53", command=lambda: self.error("ошибка 53"))
-    #     settings_menu.add_command(label="ошибка 56", command=lambda: self.error("ошибка 56"))
-    #     settings_menu.add_command(label="ошибка 57", command=lambda: self.error("ошибка 57"))
-    #     settings_menu.add_command(label="ошибка 58", command=lambda: self.error("ошибка 58"))
-    #     settings_menu.add_command(label="ошибка 59", command=lambda: self.error("ошибка 59"))
-    #     settings_menu.add_command(label="ошибка 60", command=lambda: self.error("ошибка 60"))
-    #     settings_menu.add_command(label="ошибка 64", command=lambda: self.error("ошибка 64"))
-    #     settings_menu.add_command(label="ошибка 67", command=lambda: self.error("ошибка 67"))
-    #     settings_menu.add_command(label="ошибка 70", command=lambda: self.error("ошибка 70"))
-    #     settings_menu.add_command(label="ошибка 71", command=lambda: self.error("ошибка 71"))
-    #     settings_menu.add_command(label="ошибка 96", command=lambda: self.error("ошибка 96"))
-    #     settings_menu.add_command(label="ошибка 99", command=lambda: self.error("ошибка 99"))
-    #     settings_menu.add_command(label="Частотник", command=lambda: self.error("Частотник"))
-    #     settings_menu.add_command(label="До наладчика", command=lambda: self.error("До наладчика"))
-    #     settings_menu.add_command(label="Ревизия/инспекция", command=lambda: self.error("Лифт в ревизии/инспекции"))
-    #     settings_menu.add_command(label="Аварийная блокировка", command=lambda: self.error("Аварийная блокировка"))
-    #     menu.add_cascade(label="Ошибка", command=lambda: self.error("Ошибка"), menu=settings_menu)
-    #     menu.add_command(label="Копировать заявку", command=lambda: self.clipboard())
-    #     menu.add_command(label="Редактировать", command=lambda: self.edit("Редактировать"))
-    #     menu.add_command(label="Отметить Время", command=lambda: self.time_to("Отметить Время"))
-    #     menu.add_command(label="Комментировать", command=lambda: self.open_comment("Комментировать"))
-    #     menu.add_separator()
-    #     menu.add_command(label="Ложная Заявка", command=lambda: self.lojnaya("Ложная Заявка"))
-    #     menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.error("Отсутствие электроэнергии"))
-    #     menu.add_command(label="Пожарная сигнализация", command=lambda: self.error("Пожарная сигнализация"))
-    #     menu.add_command(label="Вандальные действия", command=lambda: self.error("Вандальные действия"))
-    #     menu.add_separator()
-    #     menu.add_command(label="Удалить Заявку", command=lambda: self.delete("Удалить Заявку"))
-    #     menu.post(event.x_root, event.y_root)
 
     # ===РЕДАКТИРОВАТЬ========================================================================
     def edit(self, event):
@@ -1422,12 +1394,17 @@ class Tooltip:
 
         # Учитываем размеры экрана
         screen_width = self.widget.winfo_toplevel().winfo_screenwidth()
-        tooltip_width = 200  # Ширина подсказки
+        screen_height = self.widget.winfo_toplevel().winfo_screenheight()
+        tooltip_width = 400  # Ширина подсказки
+        tooltip_height = 400
         if x + tooltip_width > screen_width:
-            x = self.widget.winfo_rootx() + event.x - tooltip_width - 20  # Сдвигаем влево, если выходит за пределы
+            x = self.widget.winfo_rootx() + event.x - tooltip_width  # Сдвигаем по координате х
+        if y + tooltip_height > screen_height:
+            y = self.widget.winfo_rooty() + event.y - tooltip_height + 280 # Сдвигаем по координате y
+
 
         self.tooltip_window.wm_geometry(f"+{x}+{y}")
-        label = tk.Label(self.tooltip_window, text=text, background="yellow", wraplength=tooltip_width)
+        label = tk.Label(self.tooltip_window, text=text, background="yellow", wraplength=tooltip_width, font=(None, 15))
         label.pack()
 
     def hide_tooltip(self, event=None):
