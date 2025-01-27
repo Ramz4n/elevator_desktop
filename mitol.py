@@ -188,7 +188,7 @@ class Main(tk.Frame):
         toolbar9.pack(side=tk.LEFT, fill=tk.Y)
         self.label7 = tk.Label(toolbar9, borderwidth=1, width=18, relief="raised", text="ФИО механика", font='Calibri  16 bold')
         self.frame7 = tk.Frame()
-        self.entry_text7 = tk.StringVar(value='Введите ФИО')
+        self.entry_text7 = tk.StringVar(value='')
         self.entry7 = tk.Entry(toolbar9, textvariable=self.entry_text7, width=28)
         self.entry7.bind('<KeyRelease>', self.check_input_fio)
         self.label7.pack(side=tk.TOP, fill=tk.X)
@@ -226,28 +226,31 @@ class Main(tk.Frame):
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.frame7.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
+        #==========toolbar with buttons======================================================
+        #toolbar_for_buttons = tk.Frame(toolbar2, borderwidth=1, relief="raised")
+        #toolbar_for_buttons.pack(side=tk.LEFT)
+
+        #====================================================================================
         # =======NEW TOOLBAR==============================================================
         toolbar = tk.Frame(bd=2, borderwidth=1, relief="raised")
         toolbar.pack(side=tk.TOP, fill=tk.X, anchor=tk.N)
         helv36 = tkFont.Font(family='Helvetica', size=10, weight=tkFont.BOLD)
         # ================КНОПКИ========================================================
-        tool1 = tk.Frame(toolbar, borderwidth=1, relief="raised")
+        tool1 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         tool1.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
-        btn_open_dialog = tk.Button(tool1, text='Добавить заявку', command=self.sql_insert, bg='#d7d8e0', compound=tk.LEFT, width=14, height=1, font=helv36)
+        btn_open_dialog = tk.Button(tool1, text='Добавить заявку', command=self.sql_insert, bg='#d7d8e0', compound=tk.LEFT, width=19, height=1, font=helv36)
         btn_open_dialog.pack(side=tk.TOP)
-        btn_refresh = tk.Button(tool1, text='Обновить', bg='#d7d8e0', compound=tk.TOP, command=self.view_records, width=14, font=helv36)
-        btn_refresh.pack(side=tk.BOTTOM)
-        btn_search = tk.Button(tool1, text='Поиск адреса', bg='#d7d8e0', compound=tk.TOP, command=self.open_search_dialog, width=14, font=helv36)
+        btn_refresh = tk.Button(tool1, text='Обновить', bg='#d7d8e0', compound=tk.TOP, command=self.view_records, width=19, font=helv36)
+        btn_refresh.pack(side=tk.TOP)
+        btn_search = tk.Button(tool1, text='Поиск адреса', bg='#d7d8e0', compound=tk.TOP, command=self.open_search_dialog, width=19, font=helv36)
         btn_search.pack(side=tk.TOP)
         # =================КНОПКИ========================================================
-        tool3 = tk.Frame(toolbar, borderwidth=1, relief="raised")
-        tool3.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
-        btn_start = tk.Button(tool3, text='Запущенные лифты', bg='#00AD0E', compound=tk.TOP,command=self.start_lift, width=19, font=helv36)
-        btn_start.pack(side=tk.BOTTOM)
-        btn_stop = tk.Button(tool3, text='Остановленные лифты', bg='#FFB3AB', compound=tk.TOP,command=self.stop_lift, width=19, font=helv36)
+        btn_stop = tk.Button(tool1, text='Остановленные лифты', bg='#FFB3AB', compound=tk.TOP,command=self.stop_lift, width=19, font=helv36)
         btn_stop.pack(side=tk.TOP)
-        btn_open_ = tk.Button(tool3, text='Незакрытые заявки', bg='#4897FF', compound=tk.TOP,command=self.non_start_lift, width=19, font=helv36)
-        btn_open_.pack(side=tk.BOTTOM)
+        btn_open_ = tk.Button(tool1, text='Незакрытые заявки', bg='#4897FF', compound=tk.TOP,command=self.non_start_lift, width=19, font=helv36)
+        btn_open_.pack(side=tk.TOP)
+        btn_start = tk.Button(tool1, text='Запущенные лифты', bg='#00AD0E', compound=tk.TOP, command=self.start_lift, width=19, font=helv36)
+        btn_start.pack(side=tk.TOP)
         #=====================================================================================
         tool4 = tk.Frame(toolbar)
         tool4.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
@@ -256,33 +259,49 @@ class Main(tk.Frame):
         self.is_on = True
         self.enabled = IntVar()
         self.enabled.set(self.pc_id)
-        self.my_label = Label(tool4,
+        self.my_label = Label(tool1,
                          text="Мои заявки",
                          fg="green",
                          font=("Helvetica", 10))
         self.my_label.pack()
         self.on = PhotoImage(file="on.png")
         self.off = PhotoImage(file="off.png")
-        self.on_button = Button(tool4, image=self.off, bd=0, command=self.switch)
+        self.on_button = Button(tool1, image=self.off, bd=0, command=self.switch)
         self.on_button.pack()
-        btn_lineyka_close = tk.Button(tool5, text='Линейные закрытые', compound=tk.TOP,
+        btn_lineyka_close = tk.Button(tool1, text='Линейные закрытые', compound=tk.TOP,
                               command=self.close_line_lift, width=19, font=helv36, bg='#BE81FF')
-        btn_lineyka_close.pack(side=tk.BOTTOM)
-        btn_lineyka_open = tk.Button(tool5, text='Линейные открытые', compound=tk.TOP,
+        btn_lineyka_close.pack(side=tk.TOP)
+        btn_lineyka_open = tk.Button(tool1, text='Линейные открытые', compound=tk.TOP,
                                 command=self.open_line_lift, width=19, font=helv36)
-        btn_lineyka_open.pack(side=tk.BOTTOM)
+        btn_lineyka_open.pack(side=tk.TOP)
         # === ПЕРЕЛИСТЫВАНИЕ БД ПО МЕСЯЦАМ=====================================================================
         self.months = ["Январь", "Февраль", "Март", "Апрель",
                        "Май", "Июнь", "Июль", "Август",
-                       "Сентябрь","Октябрь","Ноябрь", "Декабрь"]
-        btn_refresh = tk.Button(toolbar, text='Следующий месяц', bg='#d7d8e0', compound=tk.RIGHT, command=self.update_forward, width=19, font=helv36)
-        btn_refresh.pack(side=tk.RIGHT)
+                       "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+
+        toolbar = tk.Frame(root)
+        toolbar.pack(pady=10)
+
+        btn_refresh_forward = tk.Button(toolbar, text='Следующий месяц', bg='#d7d8e0', compound=tk.CENTER,
+                                        command=self.update_forward, width=19, font='helv36')
+        btn_refresh_forward.grid(row=0, column=3, padx=5)
+
         self.year_label = Label(toolbar, text='', font='Calibri 16 bold')
-        self.year_label.pack(side=tk.RIGHT)
+        self.year_label.grid(row=0, column=2, padx=5)
+
         self.month_label = Label(toolbar, text='', font='Calibri 16 bold')
-        self.month_label.pack(side=tk.RIGHT)
-        btn_refresh = tk.Button(toolbar, text='Предыдущий месяц', bg='#d7d8e0', compound=tk.RIGHT, command=self.update_backward, width=19, font=helv36)
-        btn_refresh.pack(side=tk.RIGHT)
+        self.month_label.grid(row=0, column=1, padx=5)
+
+        btn_refresh_backward = tk.Button(toolbar, text='Предыдущий месяц', bg='#d7d8e0', compound=tk.CENTER,
+                                         command=self.update_backward, width=19, font='helv36')
+        btn_refresh_backward.grid(row=0, column=0, padx=5)
+
+        # Center the toolbar frame
+        toolbar.grid_rowconfigure(0, weight=1)
+        toolbar.grid_columnconfigure(0, weight=1)
+        toolbar.grid_columnconfigure(1, weight=1)
+        toolbar.grid_columnconfigure(2, weight=1)
+        toolbar.grid_columnconfigure(3, weight=1)
         # =======ИНФО СПРАВА О ПОДСЧЁТАХ============================================================================
         self.calendar = DateEntry(toolbar2, locale='ru_RU', font=1)
         self.calendar.bind("<<DateEntrySelected>>", self.print_info)
@@ -291,16 +310,16 @@ class Main(tk.Frame):
 
         self.tree2 = ttk.Treeview(self.label_info_bd, style="mystyle.Treeview", columns=('Город', 'Застр', 'Неиспр', 'Кол_во'),
                                   height=12, show='headings')
-        self.tree2.column('Город', width=100, anchor=tk.CENTER)
-        self.tree2.column('Застр', width=100, anchor=tk.CENTER)
-        self.tree2.column('Неиспр', width=100, anchor=tk.CENTER)
-        self.tree2.column('Кол_во', width=90, anchor=tk.CENTER)
+        self.tree2.column('Город', width=100, anchor=tk.CENTER, stretch=True)
+        self.tree2.column('Застр', width=100, anchor=tk.CENTER, stretch=True)
+        self.tree2.column('Неиспр', width=100, anchor=tk.CENTER, stretch=True)
+        self.tree2.column('Кол_во', width=90, anchor=tk.CENTER, stretch=True)
 
         self.tree2.heading('Город', text='Город')
         self.tree2.heading('Застр', text='Застрев')
         self.tree2.heading('Неиспр', text='Неиспр')
         self.tree2.heading('Кол_во', text='Кол-во')
-        self.tree2.pack(side="left", fill="both")
+        self.tree2.pack(side="left", fill="both", expand=True)
         self.label_info_bd.pack(side=tk.TOP)
         # =======ВИЗУАЛ БАЗЫ ДАННЫХ =========================================================================
         style = ttk.Style()
@@ -311,16 +330,16 @@ class Main(tk.Frame):
         columns=('ID', 'date', 'dispetcher', 'town', 'adress', 'type_lift', 'prichina', 'fio', 'date_to_go', 'comment', 'id2'),
                                  height=50, show='headings')
         self.tree.column('ID', width=50, anchor=tk.CENTER, stretch=False)
-        self.tree.column('date', width=185, anchor=tk.W, stretch=False)
+        self.tree.column('date', width=165, anchor=tk.W, stretch=False)
         self.tree.column('dispetcher', width=120, anchor=tk.W, stretch=False)
         self.tree.column('town', width=120, anchor=tk.W, stretch=False)
         self.tree.column('adress', width=280, anchor=tk.W, stretch=False)
-        self.tree.column('type_lift', width=115, anchor=tk.W, stretch=False)
+        self.tree.column('type_lift', width=90, anchor=tk.W, stretch=False)
         self.tree.column('prichina', width=130, anchor=tk.W, stretch=False)
         self.tree.column('fio', width=170, anchor=tk.W, stretch=False)
-        self.tree.column('date_to_go', width=185, anchor=tk.W, stretch=False)
+        self.tree.column('date_to_go', width=165, anchor=tk.W, stretch=False)
         self.tree.column("comment", width=1000, anchor=tk.W, stretch=True)
-        self.tree.column("id2", width=0, anchor=tk.CENTER)
+        self.tree.column("id2", width=0, anchor=tk.CENTER, stretch=tk.NO)
         self.tree.column('#0', stretch=False)
 
         self.tree.heading('ID', text='№')
@@ -328,9 +347,9 @@ class Main(tk.Frame):
         self.tree.heading('dispetcher', text='Диспетчер')
         self.tree.heading('town', text='Город')
         self.tree.heading('adress', text='Адрес')
-        self.tree.heading('type_lift', text='Тип лифта')
+        self.tree.heading('type_lift', text='Тип')
         self.tree.heading('prichina', text='Причина')
-        self.tree.heading('fio', text='ФИО механика')
+        self.tree.heading('fio', text='Механик')
         self.tree.heading('date_to_go', text='Дата запуска')
         self.tree.heading('comment', text='Комментарий', anchor=tk.W)
         self.tree.heading('id2', text='')
@@ -355,7 +374,6 @@ class Main(tk.Frame):
         self.on_select_city()
         Tooltip(self.tree)
 
-
     def label_center_switch_name(self, name, color):
         self.label_center.configure(text=f'{name}', bg=f'{color}')
 
@@ -369,7 +387,7 @@ class Main(tk.Frame):
                                              database=database)) as connection2:
                     cursor = connection2.cursor()
                     cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                        g.город AS Город,
                                        CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                                        тип_лифта,
@@ -462,14 +480,14 @@ class Main(tk.Frame):
                 with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                     cursor = connection2.cursor(dictionary=True)
                     cursor.execute(f'''SELECT z.id,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                        w.ФИО AS Диспетчер,
                                        g.город AS Город,
                                        CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                                        тип_лифта,
                                        причина,
                                        m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS дата_запуска,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS дата_запуска,
                                        комментарий
                                 FROM {table_zayavki} z
                                 JOIN {table_workers} w ON z.id_диспетчер = w.id
@@ -490,7 +508,7 @@ class Main(tk.Frame):
 
     # ===ВСТАВКА ВРЕМЕНИ В БД=======================================================================
     def time_to(self, event):
-        date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%Y, %H:%M")
+        date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%y, %H:%M")
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
         if self.tree.selection():
@@ -561,7 +579,7 @@ class Main(tk.Frame):
 
     # ===ОТМЕТИТЬ ЛОЖНУЮ==============================================================================
     def lojnaya(self, event):
-        date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%Y, %H:%M")
+        date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%y, %H:%M")
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
         if self.tree.selection():
@@ -628,14 +646,14 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
                 cursor.execute(f'''SELECT z.Номер_заявки,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                    w.ФИО AS Диспетчер,
                                    g.город AS Город,
                                    CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                                    тип_лифта,
                                    причина,
                                    m.ФИО,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                                    комментарий,
                                    z.id
                             FROM {table_zayavki} z
@@ -646,7 +664,7 @@ class Main(tk.Frame):
                             JOIN {table_padik} p ON z.id_подъезд = p.id
                             JOIN {table_workers} m ON z.id_механик = m.id
                                 WHERE z.Причина <> "Линейная" and FROM_UNIXTIME(Дата_заявки, '%m') = ?
-                                and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?
+                                and FROM_UNIXTIME(Дата_заявки, '%y') = ? and z.pc_id = ?
                                 order by z.id;''',
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
                 [self.tree.delete(i) for i in self.tree.get_children()]
@@ -674,14 +692,14 @@ class Main(tk.Frame):
                                          database=database)) as connection:
                 cursor = connection.cursor()
                 cursor.execute(f'''SELECT z.Номер_заявки,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                    w.ФИО AS Диспетчер,
                                    g.город AS Город,
                                    CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                                    тип_лифта,
                                    причина,
                                    m.ФИО,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                                    комментарий,
                                    z.id
                             FROM {table_zayavki} z
@@ -692,7 +710,7 @@ class Main(tk.Frame):
                             JOIN {table_padik} p ON z.id_подъезд = p.id
                             JOIN {table_workers} m ON z.id_механик = m.id
                                 WHERE z.Причина <> "Линейная" and FROM_UNIXTIME(Дата_заявки, '%m') = ?
-                                and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?
+                                and FROM_UNIXTIME(Дата_заявки, '%y') = ? and z.pc_id = ?
                                 order by z.id;''',
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',
                                 self.enabled.get()))
@@ -712,7 +730,7 @@ class Main(tk.Frame):
 
     def print_info(self, event):
         self.selected_date = self.calendar.get_date()
-        self.selected_date_str = self.selected_date.strftime('%d.%m.%Y')
+        self.selected_date_str = self.selected_date.strftime('%d.%m.%y')
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
@@ -722,7 +740,7 @@ class Main(tk.Frame):
                                     SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность', 'Застревание') THEN 1 ELSE 0 END) as Кол_во
                                     FROM {table_zayavki} z
                                     JOIN {table_goroda} g ON z.id_город = g.id
-                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%Y') = ?
+                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%y') = ?
                                     GROUP BY Город;''',
                 (self.selected_date_str,))
                 [self.tree2.delete(i) for i in self.tree2.get_children()]
@@ -738,14 +756,14 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
                 cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                        w.ФИО AS Диспетчер,
                                        g.город AS Город,
                                        CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                                        тип_лифта,
                                        причина,
                                        m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                                        комментарий,
                                        z.id
                                 FROM {table_zayavki} z
@@ -773,14 +791,14 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor()
                 cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                        w.ФИО AS Диспетчер,
                                        g.город AS Город,
                                        CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                                        тип_лифта,
                                        причина,
                                        m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                                        комментарий,
                                        z.id
                                 FROM {table_zayavki} z
@@ -807,14 +825,14 @@ class Main(tk.Frame):
                                          database=database)) as connection2:
                 cursor = connection2.cursor()
                 cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                        w.ФИО AS Диспетчер,
                                        g.город AS Город,
                                        CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                                        тип_лифта,
                                        причина,
                                        m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                                        комментарий,
                                        z.id
                                 FROM {table_zayavki} z
@@ -842,14 +860,14 @@ class Main(tk.Frame):
                                          database=database)) as connection2:
                 cursor = connection2.cursor()
                 cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                        w.ФИО AS Диспетчер,
                                        g.город AS Город,
                                        CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                                        тип_лифта,
                                        причина,
                                        m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                                        комментарий,
                                        z.id
                                 FROM {table_zayavki} z
@@ -877,14 +895,14 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
                 cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                        w.ФИО AS Диспетчер,
                                        g.город AS Город,
                                        CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                                        тип_лифта,
                                        причина,
                                        m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                                        комментарий,
                                        z.id
                                 FROM {table_zayavki} z
@@ -914,14 +932,14 @@ class Main(tk.Frame):
             conn = pymysql.connect(user=user, password=password, host=host, port=port, database=database)
             cursor = conn.cursor()
             sql_query = f'''SELECT z.Номер_заявки,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                    w.ФИО AS Диспетчер,
                                    g.город AS Город,
                                    CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                                    Тип_лифта,
                                    Причина,
                                    m.ФИО as Механик,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                                    Комментарий
                             FROM {table_zayavki} z
                             JOIN {table_workers} w ON z.id_диспетчер = w.id
@@ -1012,27 +1030,27 @@ class Main(tk.Frame):
     # ===ФУНКЦИЯ ОБНОВЛЕНИЯ ДАННЫХ В TREEVIEW==========================================
     def view_records(self):
         self.current_month_index = int((datetime.datetime.now(tz=None)).strftime("%m")) - 1
-        self.current_year_index = int((datetime.datetime.now(tz=None)).strftime("%Y"))
+        self.current_year_index = int((datetime.datetime.now(tz=None)).strftime("%y"))
         self.month_label.config(text=self.months[(self.current_month_index) % 12])
         self.year_label.config(text=self.current_year_index)
         self.tree.tag_configure("Red.Treeview", foreground="red")
         self.tree.tag_configure("Blue.Treeview", foreground="#1437FF")
         self.tree.tag_configure("Violet.Treeview", foreground="#7B00B4")
         date_obj = datetime.datetime.now()
-        formatted_date = date_obj.strftime('%d.%m.%Y')
+        formatted_date = date_obj.strftime('%d.%m.%y')
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
                 cursor.execute(f'''SELECT
                                         z.Номер_заявки,
-                                        FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                        FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                         w.ФИО AS Диспетчер,
                                         g.Город AS Город,
                                         CONCAT(s.Улица, ', ', d.Номер, ', ', p.Номер) AS Адрес,
                                         z.Тип_лифта,
                                         z.Причина,
                                         m.ФИО AS Механик,
-                                        FROM_UNIXTIME(z.Дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                        FROM_UNIXTIME(z.Дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                                         z.Комментарий,
                                         z.id
                                     FROM {table_zayavki} z
@@ -1043,7 +1061,7 @@ class Main(tk.Frame):
                                     JOIN {table_padik} p ON z.id_подъезд = p.id
                                     JOIN {table_workers} m ON z.id_механик = m.id
                                     WHERE z.Причина <> "Линейная" and DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%m') = ?
-                                AND DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%Y') = ? and z.pc_id = ?
+                                AND DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%y') = ? and z.pc_id = ?
                                 order by z.id;''',
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
                 [self.tree.delete(i) for i in self.tree.get_children()]
@@ -1066,22 +1084,22 @@ class Main(tk.Frame):
         self.adress = adress
         self.calendar1 = calendar1
         self.calendar2 = calendar2
-        time_obj1 = datetime.datetime.strptime(self.calendar1, '%d.%m.%Y')
-        time_obj2 = datetime.datetime.strptime(self.calendar2, '%d.%m.%Y')
+        time_obj1 = datetime.datetime.strptime(self.calendar1, '%d.%m.%y')
+        time_obj2 = datetime.datetime.strptime(self.calendar2, '%d.%m.%y')
         unix_time1 = int(time_obj1.timestamp())
         unix_time2 = int(time_obj2.timestamp()) + 86400
         try:
             conn = mariadb.connect(user=user, password=password, host=host, port=port, database=database)
             cur = conn.cursor()
             cur.execute(f'''SELECT z.Номер_заявки,
-                           FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                           FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                            w.ФИО AS Диспетчер,
                            g.город AS Город,
                            CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                            тип_лифта,
                            причина,
                            m.ФИО,
-                           FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                           FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                            комментарий,
                            z.id
                             FROM {table_zayavki} z
@@ -1267,7 +1285,7 @@ class Main(tk.Frame):
         selected_disp_str = eval(self.disp.get())
         self.selected_disp_id = selected_disp_str['id']
         self.selected_disp_name = selected_disp_str['ФИО']
-        date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%Y, %H:%M")
+        date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%y, %H:%M")
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
         d = (datetime.datetime.now(tz=None)).strftime("%d")
@@ -1284,8 +1302,8 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
                 cursor.execute(f"SELECT COALESCE(MAX(Номер_заявки), 0) FROM {table_zayavki} "
-                               f"WHERE DATE_FORMAT(FROM_UNIXTIME(""Дата_заявки), '%Y-%m') = ?",
-                    ((datetime.datetime.now()).strftime('%Y-%m'),))
+                               f"WHERE DATE_FORMAT(FROM_UNIXTIME(""Дата_заявки), '%y-%m') = ?",
+                    ((datetime.datetime.now()).strftime('%y-%m'),))
                 number_application = cursor.fetchone()[0]
                 number_application += 1
                 #===========================================
@@ -1300,20 +1318,20 @@ class Main(tk.Frame):
                         {table_doma}.id AS doma_id, 
                         {table_padik}.id AS padik_id, 
                         {table_lifts}.id as id_лифт
-                            FROM {table_lifts}
-                            JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
-                            JOIN {table_doma} ON {table_lifts}.id_дом = {table_doma}.id
-                            JOIN {table_street} ON {table_doma}.id_улица = {table_street}.id
-                            JOIN {table_goroda} ON {table_street}.id_город = {table_goroda}.id
-                            WHERE {table_goroda}.город = "{self.selected_city}" 
-                            AND {table_street}.улица = "{parts[0].strip()}" 
-                            AND {table_doma}.номер = "{parts[1].strip()}" 
-                            AND {table_padik}.номер = "{parts[2].strip()}" and тип_лифта="{self.entry_text4.get()}";''')
+                        FROM {table_lifts}
+                        JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                        JOIN {table_doma} ON {table_lifts}.id_дом = {table_doma}.id
+                        JOIN {table_street} ON {table_doma}.id_улица = {table_street}.id
+                        JOIN {table_goroda} ON {table_street}.id_город = {table_goroda}.id
+                        WHERE {table_goroda}.город = "{self.selected_city}" 
+                        AND {table_street}.улица = "{parts[0].strip()}" 
+                        AND {table_doma}.номер = "{parts[1].strip()}" 
+                        AND {table_padik}.номер = "{parts[2].strip()}" and тип_лифта="{self.entry_text4.get()}";''')
                         data_lifts = cursor.fetchall()
-                        if self.check_lineyki(data_lifts):
-                            print("точно создать заявку?")
-                        else:
-                            print('создаём заявку')
+                        # if self.check_lineyki(data_lifts):
+                        #     print("точно создать заявку?")
+                        # else:
+                        #     print('создаём заявку')
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
                 gorod, street, dom, padik, lift_id = data_lifts[0]
@@ -1793,22 +1811,22 @@ class Search(tk.Toplevel):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''SELECT
-                                            {table_goroda}.id as goroda_id,
-                                            {table_goroda}.город,
-                                            {table_street}.id as street_id,
-                                            {table_street}.улица,
-                                            {table_doma}.id as doma_id,
-                                            {table_doma}.номер as дом,
-                                            {table_padik}.id as padik_id,
-                                            {table_padik}.номер as подъезд
-                                        FROM {table_goroda}
-                                        JOIN {table_street} ON {table_goroda}.id = {table_street}.id_город
-                                        JOIN {table_doma} ON {table_street}.id = {table_doma}.id_улица
-                                        JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
-                                        JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
-                                        WHERE {table_goroda}.город = '{self.selected_city}'
-                                        GROUP BY {table_goroda}.id, {table_street}.улица, {table_doma}.номер, {table_padik}.номер
-                                        ORDER BY {table_goroda}.id, {table_street}.улица, {table_doma}.номер, {table_padik}.номер;''')
+                                    {table_goroda}.id as goroda_id,
+                                    {table_goroda}.город,
+                                    {table_street}.id as street_id,
+                                    {table_street}.улица,
+                                    {table_doma}.id as doma_id,
+                                    {table_doma}.номер as дом,
+                                    {table_padik}.id as padik_id,
+                                    {table_padik}.номер as подъезд
+                                FROM {table_goroda}
+                                JOIN {table_street} ON {table_goroda}.id = {table_street}.id_город
+                                JOIN {table_doma} ON {table_street}.id = {table_doma}.id_улица
+                                JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
+                                JOIN {table_padik} ON {table_lifts}.id_подъезд = {table_padik}.id
+                                WHERE {table_goroda}.город = '{self.selected_city}'
+                                GROUP BY {table_goroda}.id, {table_street}.улица, {table_doma}.номер, {table_padik}.номер
+                                ORDER BY {table_goroda}.id, {table_street}.улица, {table_doma}.номер, {table_padik}.номер;''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
@@ -1851,7 +1869,9 @@ class Search(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''SELECT {table_street}.Улица, {table_doma}.Номер AS дом, {table_padik}.Номер AS подъезд
+                cursor.execute(f'''SELECT {table_street}.Улица, 
+                        {table_doma}.Номер AS дом, 
+                        {table_padik}.Номер AS подъезд
                         FROM {table_street}
                         JOIN {table_doma} ON {table_street}.id = {table_doma}.id_улица
                         JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
@@ -1875,7 +1895,9 @@ class Search(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''SELECT {table_street}.Улица, {table_doma}.Номер AS дом, {table_padik}.Номер AS подъезд
+                cursor.execute(f'''SELECT {table_street}.Улица, 
+                        {table_doma}.Номер AS дом, 
+                        {table_padik}.Номер AS подъезд
                         FROM {table_street}
                         JOIN {table_doma} ON {table_street}.id = {table_doma}.id_улица
                         JOIN {table_lifts} ON {table_doma}.id = {table_lifts}.id_дом
@@ -2012,7 +2034,7 @@ if __name__ == "__main__":
     table_zayavki = data['table_zayavki']
     table_workers = data['table_workers']
 
-    time_format = "%d.%m.%Y, %H:%M"
+    time_format = "%d.%m.%y, %H:%M"
 
     root = tk.Tk()
     app = Main(root)
