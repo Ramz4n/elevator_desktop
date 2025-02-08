@@ -6,8 +6,21 @@ class Main(tk.Frame):
         root.title("МиТОЛ")
         root.state("zoomed")
         root.resizable(False, True)
+        self.session = Session()
         self.init_main()
-        self.view_records()
+        self.db_config = {
+            'db_host': host,
+            'db_user': user,
+            'db_password': password,
+            'db_port': port,
+            'db_name': database,
+            'table_goroda': table_goroda,
+            'table_zayavki': table_zayavki,
+            'table_workers': table_workers,
+            'table_street': table_street,
+            'table_doma': table_doma,
+            'table_padik': table_padik}
+            #'TOKEN': token}
 
 
     def init_main(self):
@@ -20,48 +33,73 @@ class Main(tk.Frame):
         fm = Menu(m, font=20)
         m.add_cascade(label="МЕНЮ", menu=fm)
         fm.add_command(label="Открыть в экселе", command=self.open_bd_to_excel)
+        fm.add_command(label="Дневная статистика", command=self.afternoon_statistic)
         # =======1 ОСНОВНОЙ TOOLBAR====================================================================
         toolbar2 = tk.Frame(borderwidth=1, relief="raised")
         toolbar2.pack(side=tk.TOP, fill=tk.X)
-        # ==========================================================================================
+        # ===============================№1 ДИСПЕТЧЕРА===========================================================
         try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port,
+                                         database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''select id, ФИО from {table_workers} where Должность="Диспетчер" order by ФИО''')
                 data_workers = cursor.fetchall()
         except:
-            mb.showerror("Ошибка","Нет подключения к базе данных")
+            mb.showerror("Ошибка", "Нет подключения к базе данных")
             sys.exit()
         try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port,
+                                         database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''select w.ФИО from {table_zayavki} z
-                JOIN {table_workers} w ON z.id_диспетчер = w.id
-                where pc_id={self.pc_id}
-                ORDER BY z.id DESC LIMIT 1''')
+                cursor.execute(f'''select w.id, w.ФИО from {table_zayavki} z
+                        JOIN {table_workers} w ON z.id_диспетчер = w.id
+                        where pc_id={self.pc_id}
+                        ORDER BY z.id DESC LIMIT 1''')
                 data_worker = cursor.fetchone()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.disp_to_id = {i['ФИО'] for i in data_workers}
-        first_element = next(iter(self.disp_to_id), None)
-        if data_worker is None:
-            data = first_element
-        else:
-            data = data_worker['ФИО']
+
+        # Создаем toolbar для диспетчеров
         toolbar3 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar3.pack(side=tk.LEFT, fill=tk.Y)
-        self.disp = tk.StringVar(value=data)
-        self.label3 = tk.Label(toolbar3, borderwidth=1, width=18, relief="raised", text="Диспетчер", font='Calibri 16 bold')
-        frame3 = tk.Frame(toolbar3)
-        self.label3.pack(side=tk.TOP, fill=tk.X)
-        for d in data_workers:
-            lang_btn3 = tk.Radiobutton(toolbar3, text=d['ФИО'], value=d, variable=self.disp, font='Calibri  16')
-            lang_btn3.pack(anchor=tk.NW, expand=True)
-            if d['ФИО'] == self.disp.get():
-                lang_btn3.select()
-            else:
-                lang_btn3.deselect()
-        frame3.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
+
+        self.label1 = tk.Label(toolbar3, borderwidth=1, width=21, relief="raised", text="Диспетчер", font='Calibri 16 bold')
+        self.label1.pack(side=tk.TOP, fill=tk.X)
+
+        self.canvas2 = tk.Canvas(toolbar3, width=100)
+        self.scrollbar2 = ttk.Scrollbar(toolbar3, orient="vertical", command=self.canvas2.yview)
+        self.scrollable_frame2 = ttk.Frame(self.canvas2)
+
+        self.scrollable_frame2.bind(
+                            "<Configure>",
+                            lambda e: self.canvas2.configure(
+                                scrollregion=self.canvas2.bbox("all")))
+        self.canvas2.create_window((0, 0), window=self.scrollable_frame2, anchor="nw")
+        self.canvas2.configure(yscrollcommand=self.scrollbar2.set)
+
+        self.canvas2.pack(side="left", fill="both", expand=True)
+        self.scrollbar2.pack(side="right", fill="y")
+
+        # Привязка событий колесика мыши только к Canvas
+        self.canvas2.bind("<MouseWheel>", self._on_mousewheel2)
+        self.canvas2.bind("<Button-4>", self._on_mousewheel2)
+        self.canvas2.bind("<Button-5>", self._on_mousewheel2)
+
+        self.workers_dict = {disp['ФИО']: disp['id'] for disp in data_workers}
+
+        # Устанавливаем значение для StringVar
+        self.disp = tk.StringVar(value=data_worker['ФИО'] if data_worker else '')
+        self.disp.trace("w", self.on_select_disp)
+
+        for disp in data_workers:
+            radiobutton = tk.Radiobutton(self.scrollable_frame2, font=('Calibri', 16), text=disp['ФИО'],
+                                         variable=self.disp,
+                                         value=disp['ФИО'])
+            radiobutton.pack(anchor="w")
+            radiobutton.bind("<MouseWheel>", self._on_mousewheel2)
+            radiobutton.bind("<Button-4>", self._on_mousewheel2)
+            radiobutton.bind("<Button-5>", self._on_mousewheel2)
+
         # =======2 ГОРОДА===========================================================================
         toolbar4 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar4.pack(side=tk.LEFT, fill=tk.Y)
@@ -207,7 +245,7 @@ class Main(tk.Frame):
 
         # Создаем вертикальный скроллбар
         self.scrollbar_y = tk.Scrollbar(toolbar9, orient=tk.VERTICAL)
-        self.scrollbar_y.pack(side=tk.RIGHT, fill=tk.X)
+        self.scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
 
         # Связываем скроллбар с Listbox
         self.listbox7.config(yscrollcommand=self.scrollbar_y.set)
@@ -240,16 +278,16 @@ class Main(tk.Frame):
         tool1.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
         btn_open_dialog = tk.Button(tool1, text='Добавить заявку', command=self.sql_insert, bg='#d7d8e0', compound=tk.LEFT, width=19, height=1, font=helv36)
         btn_open_dialog.pack(side=tk.TOP)
-        btn_refresh = tk.Button(tool1, text='Обновить', bg='#d7d8e0', compound=tk.TOP, command=self.view_records, width=19, font=helv36)
+        btn_refresh = tk.Button(tool1, text='Обновить', bg='#d7d8e0', compound=tk.TOP, command=lambda: self.event_of_button('all'), width=19, font=helv36)
         btn_refresh.pack(side=tk.TOP)
         btn_search = tk.Button(tool1, text='Поиск адреса', bg='#d7d8e0', compound=tk.TOP, command=self.open_search_dialog, width=19, font=helv36)
         btn_search.pack(side=tk.TOP)
         # =================КНОПКИ========================================================
-        btn_stop = tk.Button(tool1, text='Остановленные лифты', bg='#FFB3AB', compound=tk.TOP,command=self.stop_lift, width=19, font=helv36)
+        btn_stop = tk.Button(tool1, text='Остановленные лифты', bg='#FFB3AB', compound=tk.TOP, command=lambda: self.event_of_button('stopped'), width=19, font=helv36)
         btn_stop.pack(side=tk.TOP)
-        btn_open_ = tk.Button(tool1, text='Незакрытые заявки', bg='#4897FF', compound=tk.TOP,command=self.non_start_lift, width=19, font=helv36)
+        btn_open_ = tk.Button(tool1, text='Незакрытые заявки', bg='#4897FF', compound=tk.TOP, command=lambda: self.event_of_button('open'), width=19, font=helv36)
         btn_open_.pack(side=tk.TOP)
-        btn_start = tk.Button(tool1, text='Запущенные лифты', bg='#00AD0E', compound=tk.TOP, command=self.start_lift, width=19, font=helv36)
+        btn_start = tk.Button(tool1, text='Запущенные лифты', bg='#00AD0E', compound=tk.TOP, command=lambda: self.event_of_button('started'), width=19, font=helv36)
         btn_start.pack(side=tk.TOP)
         #=====================================================================================
         tool4 = tk.Frame(toolbar)
@@ -269,11 +307,14 @@ class Main(tk.Frame):
         self.on_button = Button(tool1, image=self.off, bd=0, command=self.switch)
         self.on_button.pack()
         btn_lineyka_close = tk.Button(tool1, text='Линейные закрытые', compound=tk.TOP,
-                              command=self.close_line_lift, width=19, font=helv36, bg='#BE81FF')
+                              command=lambda: self.event_of_button('line_close'), width=19, font=helv36, bg='#BE81FF')
         btn_lineyka_close.pack(side=tk.TOP)
         btn_lineyka_open = tk.Button(tool1, text='Линейные открытые', compound=tk.TOP,
-                                command=self.open_line_lift, width=19, font=helv36)
+                                command=lambda: self.event_of_button('line_open'), width=19, font=helv36)
         btn_lineyka_open.pack(side=tk.TOP)
+        btn_svyaz = tk.Button(tool1, text='Связь', compound=tk.TOP,
+                                     command=lambda: self.event_of_button('svyaz'), width=19, font=helv36)
+        btn_svyaz.pack(side=tk.TOP)
         # === ПЕРЕЛИСТЫВАНИЕ БД ПО МЕСЯЦАМ=====================================================================
         self.months = ["Январь", "Февраль", "Март", "Апрель",
                        "Май", "Июнь", "Июль", "Август",
@@ -283,7 +324,7 @@ class Main(tk.Frame):
         toolbar.pack(pady=10)
 
         btn_refresh_forward = tk.Button(toolbar, text='Следующий месяц', bg='#d7d8e0', compound=tk.CENTER,
-                                        command=self.update_forward, width=19, font='helv36')
+                                        command=lambda: self.change_months("forward"), width=19, font='helv36')
         btn_refresh_forward.grid(row=0, column=3, padx=5)
 
         self.year_label = Label(toolbar, text='', font='Calibri 16 bold')
@@ -293,7 +334,7 @@ class Main(tk.Frame):
         self.month_label.grid(row=0, column=1, padx=5)
 
         btn_refresh_backward = tk.Button(toolbar, text='Предыдущий месяц', bg='#d7d8e0', compound=tk.CENTER,
-                                         command=self.update_backward, width=19, font='helv36')
+                                         command=lambda: self.change_months("backward"), width=19, font='helv36')
         btn_refresh_backward.grid(row=0, column=0, padx=5)
 
         # Center the toolbar frame
@@ -302,25 +343,7 @@ class Main(tk.Frame):
         toolbar.grid_columnconfigure(1, weight=1)
         toolbar.grid_columnconfigure(2, weight=1)
         toolbar.grid_columnconfigure(3, weight=1)
-        # =======ИНФО СПРАВА О ПОДСЧЁТАХ============================================================================
-        self.calendar = DateEntry(toolbar2, locale='ru_RU', font=1)
-        self.calendar.bind("<<DateEntrySelected>>", self.print_info)
-        self.calendar.pack(side=tk.TOP, anchor=tk.NW)
-        self.label_info_bd = tk.Label(toolbar2, borderwidth=1, width=50, height=10, relief="raised", text="", font='Times 12')
 
-        self.tree2 = ttk.Treeview(self.label_info_bd, style="mystyle.Treeview", columns=('Город', 'Застр', 'Неиспр', 'Кол_во'),
-                                  height=12, show='headings')
-        self.tree2.column('Город', width=100, anchor=tk.CENTER, stretch=True)
-        self.tree2.column('Застр', width=100, anchor=tk.CENTER, stretch=True)
-        self.tree2.column('Неиспр', width=100, anchor=tk.CENTER, stretch=True)
-        self.tree2.column('Кол_во', width=90, anchor=tk.CENTER, stretch=True)
-
-        self.tree2.heading('Город', text='Город')
-        self.tree2.heading('Застр', text='Застрев')
-        self.tree2.heading('Неиспр', text='Неиспр')
-        self.tree2.heading('Кол_во', text='Кол-во')
-        self.tree2.pack(side="left", fill="both", expand=True)
-        self.label_info_bd.pack(side=tk.TOP)
         # =======ВИЗУАЛ БАЗЫ ДАННЫХ =========================================================================
         style = ttk.Style()
         style.configure("mystyle.Treeview", highlightthickness=0, bd=0, font=('Helvetica', 16), rowheight=23)
@@ -329,7 +352,7 @@ class Main(tk.Frame):
         self.tree = ttk.Treeview(self, style="mystyle.Treeview",
         columns=('ID', 'date', 'dispetcher', 'town', 'adress', 'type_lift', 'prichina', 'fio', 'date_to_go', 'comment', 'id2'),
                                  height=50, show='headings')
-        self.tree.column('ID', width=50, anchor=tk.CENTER, stretch=False)
+        self.tree.column('ID', width=60, anchor=tk.CENTER, stretch=False)
         self.tree.column('date', width=165, anchor=tk.W, stretch=False)
         self.tree.column('dispetcher', width=120, anchor=tk.W, stretch=False)
         self.tree.column('town', width=120, anchor=tk.W, stretch=False)
@@ -337,7 +360,7 @@ class Main(tk.Frame):
         self.tree.column('type_lift', width=90, anchor=tk.W, stretch=False)
         self.tree.column('prichina', width=130, anchor=tk.W, stretch=False)
         self.tree.column('fio', width=170, anchor=tk.W, stretch=False)
-        self.tree.column('date_to_go', width=165, anchor=tk.W, stretch=False)
+        self.tree.column('date_to_go', width=165, anchor=tk.CENTER, stretch=False)
         self.tree.column("comment", width=1000, anchor=tk.W, stretch=True)
         self.tree.column("id2", width=0, anchor=tk.CENTER, stretch=tk.NO)
         self.tree.column('#0', stretch=False)
@@ -372,6 +395,7 @@ class Main(tk.Frame):
         self.scrollbar.pack(side="bottom", fill="both")
         self.tree.pack(side="left", fill="both")
         self.on_select_city()
+        self.event_of_button('all')
         Tooltip(self.tree)
 
     def label_center_switch_name(self, name, color):
@@ -423,11 +447,21 @@ class Main(tk.Frame):
         else:
             mb.showerror('Вы не выбрали строку')
 
+    def afternoon_statistic(self):
+        Afternoon_statistic(root, self.db_config)
+
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
+    def _on_mousewheel2(self, event):
+        self.canvas2.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
     def on_select_city(self, *args):
         selected_city = self.city.get()
+
+    def on_select_disp(self, *args):
+        selected_disp = self.disp.get()
+        self.selected_disp_id = self.workers_dict.get(selected_disp)
 
     def switch(self):
         pc = {1, 2}
@@ -436,14 +470,14 @@ class Main(tk.Frame):
             self.my_label.config(text="Чужие заявки", fg="red")
             self.pc_id = (self.enabled.get() % len(pc)) + 1
             self.enabled.set(self.pc_id)
-            self.view_records()
+            self.event_of_button(f'{self.session.get("type_button")}')
             self.is_on = False
         else:
             self.on_button.config(image=self.off)
             self.my_label.config(text="Мои заявки", fg="green")
             self.pc_id = (self.enabled.get() % len(pc))  + 1
             self.enabled.set(self.pc_id)
-            self.view_records()
+            self.event_of_button(f'{self.session.get("type_button")}')
             self.is_on = True
 
 #ФУНКЦИЯ ПО ПОЛУЧЕНИЮ ГОРОДА И ДАЛЬНЕЙШЕМУ ПАРСИНГУ АДРЕСОВ В ОКОШКО ПО ГОРОДАМ
@@ -537,7 +571,7 @@ class Main(tk.Frame):
         else:
             mb.showerror("Ошибка","Строка не выбрана")
             return
-        self.view_records()
+        self.event_of_button(f'{self.session.get("type_button")}')
         msg = f"Время отмечено!"
         mb.showinfo("Информация", msg)
 
@@ -551,19 +585,7 @@ class Main(tk.Frame):
                         cursor = connection2.cursor()
                         id_value = self.tree.set(self.tree.selection()[0], '#11')
                         cursor.execute(f'''UPDATE {table_zayavki} 
-                                            SET Дата_заявки = NULL,
-                                                id_Диспетчер = NULL,
-                                                id_город = NULL,
-                                                id_улица = NULL,
-                                                id_дом = NULL,
-                                                id_подъезд = NULL,
-                                                тип_лифта = NULL,
-                                                Причина = NULL,
-                                                Дата_запуска = NULL,
-                                                id_Механик = NULL,
-                                                Комментарий = NULL,
-                                                id_Лифт = NULL,
-                                                pc_id = NULL
+                                            SET pc_id = NULL
                                             WHERE ID = ?''', (id_value,))
                         connection2.commit()
                 except mariadb.Error as e:
@@ -575,7 +597,7 @@ class Main(tk.Frame):
                 "Ошибка",
                 "Строка не выбрана")
             return
-        self.view_records()
+        self.event_of_button(f'{self.session.get("type_button")}')
 
     # ===ОТМЕТИТЬ ЛОЖНУЮ==============================================================================
     def lojnaya(self, event):
@@ -594,7 +616,7 @@ class Main(tk.Frame):
         else:
             mb.showerror("Ошибка","Строка не выбрана")
             return
-        self.view_records()
+        self.event_of_button(f'{self.session.get("type_button")}')
         msg = f"Запись отредактирована!"
         mb.showinfo("Информация", msg)
 
@@ -613,7 +635,7 @@ class Main(tk.Frame):
         else:
             mb.showerror("Ошибка", "Строка не выбрана")
             return
-        self.view_records()
+        self.event_of_button(f'{self.session.get("type_button")}')
         msg = f"Запись отредактирована!"
         mb.showinfo("Информация", msg)
 
@@ -636,62 +658,27 @@ class Main(tk.Frame):
             mb.showerror("Ошибка","Строка не выбрана")
             return
 
-    def update_forward(self):
-        self.current_month_index = (self.current_month_index + 1) % 12
-        self.month_label.config(text=self.months[self.current_month_index])
-        if self.current_month_index == 0:
-            self.current_year_index += 1
-            self.year_label.config(text=self.current_year_index)
-        try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-                cursor = connection.cursor()
-                cursor.execute(f'''SELECT z.Номер_заявки,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
-                                   w.ФИО AS Диспетчер,
-                                   g.город AS Город,
-                                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                   тип_лифта,
-                                   причина,
-                                   m.ФИО,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
-                                   комментарий,
-                                   z.id
-                            FROM {table_zayavki} z
-                            JOIN {table_workers} w ON z.id_диспетчер = w.id
-                            JOIN {table_goroda} g ON z.id_город = g.id
-                            JOIN {table_street} s ON z.id_улица = s.id
-                            JOIN {table_doma} d ON z.id_дом = d.id
-                            JOIN {table_padik} p ON z.id_подъезд = p.id
-                            JOIN {table_workers} m ON z.id_механик = m.id
-                                WHERE z.Причина <> "Линейная" and FROM_UNIXTIME(Дата_заявки, '%m') = ?
-                                and FROM_UNIXTIME(Дата_заявки, '%y') = ? and z.pc_id = ?
-                                order by z.id;''',
-                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
-                [self.tree.delete(i) for i in self.tree.get_children()]
-                for row in cursor.fetchall():
-                    if row[-3] is None and int((datetime.datetime.strptime(row[1], time_format)).timestamp()) < int(
-                            (time.time()) - 86400):
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
-                    elif row[-3] is None:
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Blue.Treeview',))
-                    else:
-                        self.tree.insert('', 'end', values=tuple(row))
-                connection.commit()
-                self.tree.yview_moveto(1.0)
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+    def change_months(self, text):
+        changer = Change_months(text, self.db_config, self.enabled.get(), self.session.get("type_button"),
+                                self.month_label, self.year_label, self.months, self.tree, self.current_month_index,
+                                self.current_year_index)
+        self.current_month_index = changer.month_index
+        self.current_year_index = changer.year_index
 
-    def update_backward(self):
-        self.current_month_index = (self.current_month_index - 1) % 12
+
+    def event_of_button(self, text):
+        self.current_month_index = int((datetime.datetime.now(tz=None)).strftime("%m")) - 1
+        self.current_year_index = int((datetime.datetime.now(tz=None)).strftime("%y"))
         self.month_label.config(text=self.months[self.current_month_index])
-        if self.current_month_index == 11:
-            self.current_year_index -= 1
-            self.year_label.config(text=self.current_year_index)
+        self.tree.tag_configure("Green.Treeview", foreground="#06B206")
+        self.tree.tag_configure("Red.Treeview", foreground="red")
+        self.tree.tag_configure("Blue.Treeview", foreground="#1437FF")
+        self.tree.tag_configure("Violet.Treeview", foreground="#7B00B4")
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port,
                                          database=database)) as connection:
                 cursor = connection.cursor()
-                cursor.execute(f'''SELECT z.Номер_заявки,
+                query = f'''SELECT z.Номер_заявки,
                                    FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
                                    w.ФИО AS Диспетчер,
                                    g.город AS Город,
@@ -708,216 +695,52 @@ class Main(tk.Frame):
                             JOIN {table_street} s ON z.id_улица = s.id
                             JOIN {table_doma} d ON z.id_дом = d.id
                             JOIN {table_padik} p ON z.id_подъезд = p.id
-                            JOIN {table_workers} m ON z.id_механик = m.id
-                                WHERE z.Причина <> "Линейная" and FROM_UNIXTIME(Дата_заявки, '%m') = ?
-                                and FROM_UNIXTIME(Дата_заявки, '%y') = ? and z.pc_id = ?
-                                order by z.id;''',
-                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',
-                                self.enabled.get()))
+                            JOIN {table_workers} m ON z.id_механик = m.id'''
+                if text == 'all':
+                    self.session.delete("type_button")
+                    self.session.set("type_button", "all")
+                    query += ' WHERE z.Причина <> "Линейная"'
+                elif text == 'stopped':
+                    self.session.delete("type_button")
+                    self.session.set("type_button", "stopped")
+                    query += ' WHERE Причина="Остановлен" AND Дата_запуска is Null'
+                elif text == 'open':
+                    self.session.delete("type_button")
+                    self.session.set("type_button", "open")
+                    query += ' WHERE Дата_запуска is Null AND not Причина in ("Остановлен", "Линейная", "Связь")'
+                elif text == 'line_open':
+                    self.session.delete("type_button")
+                    self.session.set("type_button", "line_open")
+                    query += ' WHERE Дата_запуска is Null AND Причина = "Линейная"'
+                elif text == 'line_close':
+                    self.session.delete("type_button")
+                    self.session.set("type_button", "line_close")
+                    query += ' WHERE Дата_запуска > 100 AND Причина = "Линейная"'
+                elif text == 'started':
+                    self.session.delete("type_button")
+                    self.session.set("type_button", "started")
+                    query += ' where Причина="Остановлен" AND Дата_запуска is not Null'
+                elif text == 'svyaz':
+                    self.session.delete("type_button")
+                    self.session.set("type_button", "svyaz")
+                    query += ' where Причина="Связь"'
+                query += f''' AND FROM_UNIXTIME(Дата_заявки, '%m') = '{str(self.current_month_index + 1).zfill(2)}'
+                                AND FROM_UNIXTIME(Дата_заявки, '%y') = '{str(self.current_year_index)}' AND z.pc_id = {self.enabled.get()}
+                                order by z.id;'''
+                cursor.execute(query)
+
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
-                    if row[-3] is None and int((datetime.datetime.strptime(row[1], time_format)).timestamp()) < int(
-                            (time.time()) - 86400):
+                    if row[-3] is None and row[-5] == 'Остановлен':
                         self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
-                    elif row[-3] is None:
+                    elif row[-3] is None and row[-5] in ('Неисправность', 'Застревание'):
                         self.tree.insert('', 'end', values=tuple(row), tags=('Blue.Treeview',))
+                    elif not row[-3] is None and row[-5] in ('Остановлен'):
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Green.Treeview',))
+                    elif not row[-3] is None and row[-5] in ('Линейная'):
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Violet.Treeview',))
                     else:
                         self.tree.insert('', 'end', values=tuple(row))
-                connection.commit()
-                self.tree.yview_moveto(1.0)
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-
-    def print_info(self, event):
-        self.selected_date = self.calendar.get_date()
-        self.selected_date_str = self.selected_date.strftime('%d.%m.%y')
-        try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-                cursor = connection.cursor()
-                cursor.execute(f'''SELECT g.город as Город,
-                                    SUM(CASE WHEN z.Причина = 'Застревание' THEN 1 ELSE 0 END) as Застр,
-                                    SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность') THEN 1 ELSE 0 END) as Неиспр,
-                                    SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность', 'Застревание') THEN 1 ELSE 0 END) as Кол_во
-                                    FROM {table_zayavki} z
-                                    JOIN {table_goroda} g ON z.id_город = g.id
-                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%y') = ?
-                                    GROUP BY Город;''',
-                (self.selected_date_str,))
-                [self.tree2.delete(i) for i in self.tree2.get_children()]
-                [self.tree2.insert('', 'end', values=row) for row in cursor.fetchall()]
-                connection.commit()
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-
-    # ===ОСТАНОВЛЕННЫЕ ЛИФТЫ==================================================================================
-    def stop_lift(self):
-        self.tree.tag_configure("Red.Treeview", foreground="red")
-        try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-                cursor = connection.cursor()
-                cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
-                                       w.ФИО AS Диспетчер,
-                                       g.город AS Город,
-                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                       тип_лифта,
-                                       причина,
-                                       m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
-                                       комментарий,
-                                       z.id
-                                FROM {table_zayavki} z
-                                JOIN {table_workers} w ON z.id_диспетчер = w.id
-                                JOIN {table_goroda} g ON z.id_город = g.id
-                                JOIN {table_street} s ON z.id_улица = s.id
-                                JOIN {table_doma} d ON z.id_дом = d.id
-                                JOIN {table_padik} p ON z.id_подъезд = p.id
-                                JOIN {table_workers} m ON z.id_механик = m.id
-                                WHERE Причина="Остановлен"
-                                and Дата_запуска is Null and z.pc_id = ?
-                                order by z.id;''', (self.enabled.get(),))
-                [self.tree.delete(i) for i in self.tree.get_children()]
-                for row in cursor.fetchall():
-                    self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
-                    connection.commit()
-                self.tree.yview_moveto(1.0)
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-
-    # ===НЕЗАКРЫТЫЕ ЗАЯВКИ==================================================================================
-    def non_start_lift(self):
-        try:
-            self.tree.tag_configure("Blue.Treeview", foreground="#1437FF")
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-                cursor = connection2.cursor()
-                cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
-                                       w.ФИО AS Диспетчер,
-                                       g.город AS Город,
-                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                       тип_лифта,
-                                       причина,
-                                       m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
-                                       комментарий,
-                                       z.id
-                                FROM {table_zayavki} z
-                                JOIN {table_workers} w ON z.id_диспетчер = w.id
-                                JOIN {table_goroda} g ON z.id_город = g.id
-                                JOIN {table_street} s ON z.id_улица = s.id
-                                JOIN {table_doma} d ON z.id_дом = d.id
-                                JOIN {table_padik} p ON z.id_подъезд = p.id
-                                JOIN {table_workers} m ON z.id_механик = m.id
-                                WHERE Дата_запуска is Null and not Причина in ("Остановлен", "Линейная") and z.pc_id = ?
-                                order by z.id;''', (self.enabled.get(),))
-                [self.tree.delete(i) for i in self.tree.get_children()]
-                for row in cursor.fetchall():
-                    self.tree.insert('', 'end', values=tuple(row), tags=('Blue.Treeview',))
-                self.tree.yview_moveto(1.0)
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-
-
-    # ===ОТКРЫТЫЕ ЛИНЕЙНЫЕ ЗАЯВКИ==================================================================================
-    def open_line_lift(self):
-        try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port,
-                                         database=database)) as connection2:
-                cursor = connection2.cursor()
-                cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
-                                       w.ФИО AS Диспетчер,
-                                       g.город AS Город,
-                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                       тип_лифта,
-                                       причина,
-                                       m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
-                                       комментарий,
-                                       z.id
-                                FROM {table_zayavki} z
-                                JOIN {table_workers} w ON z.id_диспетчер = w.id
-                                JOIN {table_goroda} g ON z.id_город = g.id
-                                JOIN {table_street} s ON z.id_улица = s.id
-                                JOIN {table_doma} d ON z.id_дом = d.id
-                                JOIN {table_padik} p ON z.id_подъезд = p.id
-                                JOIN {table_workers} m ON z.id_механик = m.id
-                                WHERE Дата_запуска is Null and Причина = "Линейная" and z.pc_id = ?
-                                order by z.id;''', (self.enabled.get(),))
-                [self.tree.delete(i) for i in self.tree.get_children()]
-                for row in cursor.fetchall():
-                    self.tree.insert('', 'end', values=tuple(row), tags=('Orange.Treeview',))
-                self.tree.yview_moveto(1.0)
-
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-
-    # ===ЗАКРЫТЫЕ ЛИНЕЙНЫЕ ЗАЯВКИ==================================================================================
-    def close_line_lift(self):
-        try:
-            self.tree.tag_configure("Violet.Treeview", foreground="#7B00B4")
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port,
-                                         database=database)) as connection2:
-                cursor = connection2.cursor()
-                cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
-                                       w.ФИО AS Диспетчер,
-                                       g.город AS Город,
-                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                       тип_лифта,
-                                       причина,
-                                       m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
-                                       комментарий,
-                                       z.id
-                                FROM {table_zayavki} z
-                                JOIN {table_workers} w ON z.id_диспетчер = w.id
-                                JOIN {table_goroda} g ON z.id_город = g.id
-                                JOIN {table_street} s ON z.id_улица = s.id
-                                JOIN {table_doma} d ON z.id_дом = d.id
-                                JOIN {table_padik} p ON z.id_подъезд = p.id
-                                JOIN {table_workers} m ON z.id_механик = m.id
-                                WHERE Дата_запуска > 100 and Причина = "Линейная" and z.pc_id = ?
-                                order by z.id;''', (self.enabled.get(),))
-                [self.tree.delete(i) for i in self.tree.get_children()]
-                for row in cursor.fetchall():
-                    self.tree.insert('', 'end', values=tuple(row), tags=('Violet.Treeview',))
-                self.tree.yview_moveto(1.0)
-
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-
-
-    # ===ЗАПУЩЕННЫЕ ЛИФТЫ==================================================================================
-    def start_lift(self):
-        self.tree.tag_configure("Green.Treeview", foreground="#06B206")
-        try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-                cursor = connection.cursor()
-                cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
-                                       w.ФИО AS Диспетчер,
-                                       g.город AS Город,
-                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                       тип_лифта,
-                                       причина,
-                                       m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
-                                       комментарий,
-                                       z.id
-                                FROM {table_zayavki} z
-                                JOIN {table_workers} w ON z.id_диспетчер = w.id
-                                JOIN {table_goroda} g ON z.id_город = g.id
-                                JOIN {table_street} s ON z.id_улица = s.id
-                                JOIN {table_doma} d ON z.id_дом = d.id
-                                JOIN {table_padik} p ON z.id_подъезд = p.id
-                                JOIN {table_workers} m ON z.id_механик = m.id
-                                where Причина="Остановлен" 
-                                and Дата_запуска is not Null and z.pc_id = ?
-                                order by z.id;''', (self.enabled.get(),))
-                [self.tree.delete(i) for i in self.tree.get_children()]
-                for row in cursor.fetchall():
-                    self.tree.insert('', 'end', values=row, tags=('Green.Treeview',))
                 connection.commit()
                 self.tree.yview_moveto(1.0)
         except mariadb.Error as e:
@@ -960,6 +783,7 @@ class Main(tk.Frame):
 
     # ===РЕДАКТИРОВАНИЕ ДАННЫХ В БД===================================================================
     def update_record(self, data, dispetcher, town, street, house, padik, type_lift, prichina, fio_meh, date_to_go, comment):
+        self.session.get("type_button")
         try:
             date_object = datetime.datetime.strptime(data, time_format)
             if date_to_go == None or date_to_go == '':
@@ -1009,12 +833,12 @@ class Main(tk.Frame):
                 connection.commit()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.view_records()
+        self.event_of_button(f'{self.session.get("type_button")}')
         msg = f"Запись отредактирована!"
         mb.showinfo("Информация", msg)
 
     # ===ФУНКЦИЯ КНОПКИ ЧЕРЕЗ КОММЕНТИРОВАНИЯ================================================
-    def comment(self, comment):
+    def comment(self, comment, callback):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor()
@@ -1023,60 +847,11 @@ class Main(tk.Frame):
                 connection2.commit()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.view_records()
+        self.event_of_button(f'{self.session.get("type_button")}')
+        if callback:
+            callback()
         msg = f"Комментарий добавлен!"
         mb.showinfo("Информация", msg)
-
-    # ===ФУНКЦИЯ ОБНОВЛЕНИЯ ДАННЫХ В TREEVIEW==========================================
-    def view_records(self):
-        self.current_month_index = int((datetime.datetime.now(tz=None)).strftime("%m")) - 1
-        self.current_year_index = int((datetime.datetime.now(tz=None)).strftime("%y"))
-        self.month_label.config(text=self.months[(self.current_month_index) % 12])
-        self.year_label.config(text=self.current_year_index)
-        self.tree.tag_configure("Red.Treeview", foreground="red")
-        self.tree.tag_configure("Blue.Treeview", foreground="#1437FF")
-        self.tree.tag_configure("Violet.Treeview", foreground="#7B00B4")
-        date_obj = datetime.datetime.now()
-        formatted_date = date_obj.strftime('%d.%m.%y')
-        try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-                cursor = connection.cursor()
-                cursor.execute(f'''SELECT
-                                        z.Номер_заявки,
-                                        FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
-                                        w.ФИО AS Диспетчер,
-                                        g.Город AS Город,
-                                        CONCAT(s.Улица, ', ', d.Номер, ', ', p.Номер) AS Адрес,
-                                        z.Тип_лифта,
-                                        z.Причина,
-                                        m.ФИО AS Механик,
-                                        FROM_UNIXTIME(z.Дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
-                                        z.Комментарий,
-                                        z.id
-                                    FROM {table_zayavki} z
-                                    JOIN {table_workers} w ON z.id_диспетчер = w.id
-                                    JOIN {table_goroda} g ON z.id_город = g.id
-                                    JOIN {table_street} s ON z.id_улица = s.id
-                                    JOIN {table_doma} d ON z.id_дом = d.id
-                                    JOIN {table_padik} p ON z.id_подъезд = p.id
-                                    JOIN {table_workers} m ON z.id_механик = m.id
-                                    WHERE z.Причина <> "Линейная" and DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%m') = ?
-                                AND DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%y') = ? and z.pc_id = ?
-                                order by z.id;''',
-                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
-                [self.tree.delete(i) for i in self.tree.get_children()]
-                for row in cursor.fetchall():
-                    if row[-3] is None and int((datetime.datetime.strptime(row[1], time_format)).timestamp()) < int((time.time()) - 86400):
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
-                    elif row[-3] is None:
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Blue.Treeview',))
-                    else:
-                        self.tree.insert('', 'end', values=tuple(row))
-                self.tree.yview_moveto(1.0)
-                connection.commit()
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.print_info(formatted_date)
 
     # ===ФУНКЦИЯ КНОПКИ ПОИСКА ПО АДРЕСУ===============================================
     def search_records(self, town, adress, calendar1, calendar2):
@@ -1282,16 +1057,14 @@ class Main(tk.Frame):
         return False
 
     def sql_insert(self):
-        selected_disp_str = eval(self.disp.get())
-        self.selected_disp_id = selected_disp_str['id']
-        self.selected_disp_name = selected_disp_str['ФИО']
+        self.on_select_disp()
         date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%y, %H:%M")
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
         d = (datetime.datetime.now(tz=None)).strftime("%d")
-        val2 = [self.selected_disp_name, self.selected_city, self.entry_text3.get(),
+        val2 = [self.selected_city, self.entry_text3.get(),
                 self.entry_text4.get(), self.prich5.get(), self.entry_text7.get()]
-        naz = ['Диспетчер', 'Город', 'Адрес', 'Тип лифта', 'Причина остановки', 'ФИО механика']
+        naz = ['Город', 'Адрес', 'Тип лифта', 'Причина остановки', 'ФИО механика']
         for i in range(len(val2)):
             if len(val2[i]) < 2:
                 mb.showerror(
@@ -1334,10 +1107,13 @@ class Main(tk.Frame):
                         #     print('создаём заявку')
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+
                 gorod, street, dom, padik, lift_id = data_lifts[0]
+
                 val = (number_application, unix_time, self.selected_disp_id,
                        gorod, street, dom, padik, self.entry4.get(),
-                    self.prich5.get(), None, self.selected_meh_id, '', lift_id, self.pc_id)
+                    self.prich5.get(), None, self.selected_meh_id,
+                       '', lift_id, self.pc_id)
                 try:
                     with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                         cursor = connection.cursor()
@@ -1358,6 +1134,7 @@ class Main(tk.Frame):
                                         pc_id) 
                                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',(val))
                         connection.commit()
+                    #Telegram_sendler(self.db_config, val)
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных123: {e}")
         except mariadb.Error as e:
@@ -1780,12 +1557,12 @@ class Search(tk.Toplevel):
         label_data.pack()
         label_c = tk.Label(toolbar6, text='с', font='Calibri 15 bold')
         label_c.pack()
-        self.calendar1 = DateEntry(toolbar6, locale='ru_RU', font=1)
+        self.calendar1 = DateEntry(toolbar6, locale='ru_RU', font=1, date_pattern='dd.mm.yy')
         self.calendar1.bind("<<DateEntrySelected>>")
         self.calendar1.pack()
         label_po = tk.Label(toolbar6, text='по', font='Calibri 15 bold')
         label_po.pack()
-        self.calendar2 = DateEntry(toolbar6, locale='ru_RU', font=1)
+        self.calendar2 = DateEntry(toolbar6, locale='ru_RU', font=1, date_pattern='dd.mm.yy')
         self.calendar2.bind("<<DateEntrySelected>>")
         self.calendar2.pack()
 
@@ -1939,28 +1716,38 @@ class Comment(tk.Toplevel):
 
     def init_comm(self):
         self.title('Комментировать')
-        self.geometry('360x230+400+300')
+        self.geometry('700x400+300+300')
         self.resizable(False, False)
+        self.wm_attributes('-topmost', 1)
+        self.bind('<Unmap>', self.on_unmap)
 
-        self.t = Text(self, height=10, width=30)
+        self.t = Text(self, height=14, width=50, font=16)
         self.t.insert(tk.END, self.now[0])
         self.t.place(x=10, y=10)
 
-        self.btn_micro = ttk.Button(self, text='Сказать\U0001f3a4', command=self.on_microfon_button_click, width=12)
-        self.btn_micro.place(x=275, y=8)
+        style = ttk.Style()
+        style.configure("BigFont.TButton", font=('Helvetica', 16))
+        style.configure("Green.TButton", foreground="green", background="#50C878", font='Calibri 12')
+        style.configure("Red.TButton", foreground="red", background="#FCA195", font='Calibri 12')
+
+        self.btn_micro = ttk.Button(self, text='Сказать\U0001f3a4', command=self.on_microfon_button_click, width=9, style="BigFont.TButton")
+        self.btn_micro.place(x=565, y=8)
 
         # Метка для инструкций, расположенная под кнопкой
         self.instruction_label = ttk.Label(self, text='', wraplength=300)
-        self.instruction_label.place(x=275, y=40)  # Положение метки под кнопкой
+        self.instruction_label.place(x=575, y=40)  # Положение метки под кнопкой
 
-        button_cancel = ttk.Button(self, text='Отменить', command=self.destroy)
-        button_cancel.place(x=135, y=175)
+        button_cancel = ttk.Button(self, text='Отменить', command=self.destroy, style="Red.TButton", width=30)
+        button_cancel.place(x=300, y=340)
 
-        button_search = ttk.Button(self, text='Сохранить', command=self.save_and_close)
-        button_search.place(x=10, y=175)
+        button_search = ttk.Button(self, text='Сохранить', command=self.save_and_close, style="Green.TButton", width=30)
+        button_search.place(x=10, y=340)
 
         self.t.bind("<Button-3>", self.show_menu)
         self.t.bind_all("<Control-v>", self.paste_text)
+
+    def on_unmap(self, event):
+        self.deiconify()  # Отменяем сворачивание дочернего окна
 
     def on_microfon_button_click(self):
         if self.is_recording:
@@ -1968,7 +1755,7 @@ class Comment(tk.Toplevel):
 
         self.is_recording = True
         self.btn_micro.config(text='Говорите...')
-        self.instruction_label.config(text='Говорите', foreground='red')
+        self.instruction_label.config(text='Говорите', foreground='red', font='16')
         self.btn_micro.config(state=tk.DISABLED)
         self.update()
 
@@ -1990,8 +1777,8 @@ class Comment(tk.Toplevel):
         self.is_recording = False
 
     def save_and_close(self):
-        self.view.comment(self.t.get("1.0", tk.END).strip())
-        self.destroy()
+        self.view.comment(self.t.get("1.0", tk.END).strip(), self.destroy)
+
 
     def paste_text(self, event=None):
         text_to_paste = self.clipboard_get()
@@ -2033,6 +1820,7 @@ if __name__ == "__main__":
     table_uk = data['table_uk']
     table_zayavki = data['table_zayavki']
     table_workers = data['table_workers']
+    #token = data['TOKEN']
 
     time_format = "%d.%m.%y, %H:%M"
 
