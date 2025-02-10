@@ -24,3 +24,4 @@ from afternoon_statistic import Afternoon_statistic
 from telegram import Bot
 from session import Session
 from change_months import Change_months
+from db_manager import DataBaseManager

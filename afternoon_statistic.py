@@ -39,18 +39,14 @@ class Afternoon_statistic(tk.Toplevel):
         self.selected_date = self.calendar.get_date()
         self.selected_date_str = self.selected_date.strftime('%d.%m.%Y')
         try:
-            with closing(mariadb.connect(user=self.db_config['db_user'],
-                                         password=self.db_config['db_password'],
-                                         host=self.db_config['db_host'],
-                                         port=self.db_config['db_port'],
-                                         database=self.db_config['db_name'])) as connection:
+            with closing(self.db_config.connect()) as connection:
                 cursor = connection.cursor()
                 cursor.execute(f'''SELECT g.город as Город,
                                     SUM(CASE WHEN z.Причина = 'Застревание' THEN 1 ELSE 0 END) as Застр,
                                     SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность') THEN 1 ELSE 0 END) as Неиспр,
                                     SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность', 'Застревание') THEN 1 ELSE 0 END) as Кол_во
-                                    FROM {self.db_config['table_zayavki']} z
-                                    JOIN {self.db_config['table_goroda']} g ON z.id_город = g.id
+                                    FROM {self.db_config.data['table_zayavki']} z
+                                    JOIN {self.db_config.data['table_goroda']} g ON z.id_город = g.id
                                     WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%Y') = ?
                                     GROUP BY Город;''',
                                (self.selected_date_str,))
