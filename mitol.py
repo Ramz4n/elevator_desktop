@@ -21,6 +21,7 @@ class Main(tk.Frame):
             'table_doma': table_doma,
             'table_padik': table_padik}
             #'TOKEN': token}
+        self.afternoon_statistic_window = None
 
 
     def init_main(self):
@@ -42,7 +43,7 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port,
                                          database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''select id, ФИО from {table_workers} where Должность="Диспетчер" order by ФИО''')
+                cursor.execute(f'''select id, ФИО from {table_workers} where Должность="Диспетчер" and is_active = 1 order by ФИО''')
                 data_workers = cursor.fetchall()
         except:
             mb.showerror("Ошибка", "Нет подключения к базе данных")
@@ -448,7 +449,12 @@ class Main(tk.Frame):
             mb.showerror('Вы не выбрали строку')
 
     def afternoon_statistic(self):
-        Afternoon_statistic(root, self.db_config)
+        if self.afternoon_statistic_window is None or not self.afternoon_statistic_window.is_open():
+            # Если окно не существует или закрыто, создаем новое
+            self.afternoon_statistic_window = Afternoon_statistic(self, self.db_config)
+        else:
+            # Если окно открыто, показываем его
+            self.afternoon_statistic_window.show()
 
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -533,7 +539,7 @@ class Main(tk.Frame):
                                      where z.id=?''',
                                    (self.tree.set(self.tree.selection()[0], '#11'),))
                     rows = cursor.fetchall()
-                    Child(rows)
+                    Edit(rows)
             except mariadb.Error as e:
                 showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         else:
@@ -665,6 +671,26 @@ class Main(tk.Frame):
         self.current_month_index = changer.month_index
         self.current_year_index = changer.year_index
 
+    def query(self):
+        return f'''SELECT z.Номер_заявки,
+                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
+                   w.ФИО AS Диспетчер,
+                   g.город AS Город,
+                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                   тип_лифта,
+                   причина,
+                   m.ФИО,
+                   FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
+                   комментарий,
+                   z.id
+                   FROM {table_zayavki} z
+                   JOIN {table_workers} w ON z.id_диспетчер = w.id
+                   JOIN {table_goroda} g ON z.id_город = g.id
+                   JOIN {table_street} s ON z.id_улица = s.id
+                   JOIN {table_doma} d ON z.id_дом = d.id
+                   JOIN {table_padik} p ON z.id_подъезд = p.id
+                   JOIN {table_workers} m ON z.id_механик = m.id'''
+
 
     def event_of_button(self, text):
         self.current_month_index = int((datetime.datetime.now(tz=None)).strftime("%m")) - 1
@@ -678,55 +704,48 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port,
                                          database=database)) as connection:
                 cursor = connection.cursor()
-                query = f'''SELECT z.Номер_заявки,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
-                                   w.ФИО AS Диспетчер,
-                                   g.город AS Город,
-                                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                   тип_лифта,
-                                   причина,
-                                   m.ФИО,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
-                                   комментарий,
-                                   z.id
-                            FROM {table_zayavki} z
-                            JOIN {table_workers} w ON z.id_диспетчер = w.id
-                            JOIN {table_goroda} g ON z.id_город = g.id
-                            JOIN {table_street} s ON z.id_улица = s.id
-                            JOIN {table_doma} d ON z.id_дом = d.id
-                            JOIN {table_padik} p ON z.id_подъезд = p.id
-                            JOIN {table_workers} m ON z.id_механик = m.id'''
+                query = self.query()
+
+                end = f''' AND FROM_UNIXTIME(Дата_заявки, '%m') = '{str(self.current_month_index + 1).zfill(2)}'
+                                AND FROM_UNIXTIME(Дата_заявки, '%y') = '{str(self.current_year_index)}' AND z.pc_id = {self.enabled.get()}
+                                order by z.id;'''
+                order = f''' AND z.pc_id = {self.enabled.get()}
+                                order by z.id;'''
                 if text == 'all':
                     self.session.delete("type_button")
                     self.session.set("type_button", "all")
                     query += ' WHERE z.Причина <> "Линейная"'
+                    query += end
                 elif text == 'stopped':
                     self.session.delete("type_button")
                     self.session.set("type_button", "stopped")
                     query += ' WHERE Причина="Остановлен" AND Дата_запуска is Null'
+                    query += order
                 elif text == 'open':
                     self.session.delete("type_button")
                     self.session.set("type_button", "open")
                     query += ' WHERE Дата_запуска is Null AND not Причина in ("Остановлен", "Линейная", "Связь")'
+                    query += order
                 elif text == 'line_open':
                     self.session.delete("type_button")
                     self.session.set("type_button", "line_open")
                     query += ' WHERE Дата_запуска is Null AND Причина = "Линейная"'
+                    query += order
                 elif text == 'line_close':
                     self.session.delete("type_button")
                     self.session.set("type_button", "line_close")
                     query += ' WHERE Дата_запуска > 100 AND Причина = "Линейная"'
+                    query += end
                 elif text == 'started':
                     self.session.delete("type_button")
                     self.session.set("type_button", "started")
                     query += ' where Причина="Остановлен" AND Дата_запуска is not Null'
+                    query += end
                 elif text == 'svyaz':
                     self.session.delete("type_button")
                     self.session.set("type_button", "svyaz")
                     query += ' where Причина="Связь"'
-                query += f''' AND FROM_UNIXTIME(Дата_заявки, '%m') = '{str(self.current_month_index + 1).zfill(2)}'
-                                AND FROM_UNIXTIME(Дата_заявки, '%y') = '{str(self.current_year_index)}' AND z.pc_id = {self.enabled.get()}
-                                order by z.id;'''
+                    query += order
                 cursor.execute(query)
 
                 [self.tree.delete(i) for i in self.tree.get_children()]
@@ -741,6 +760,7 @@ class Main(tk.Frame):
                         self.tree.insert('', 'end', values=tuple(row), tags=('Violet.Treeview',))
                     else:
                         self.tree.insert('', 'end', values=tuple(row))
+
                 connection.commit()
                 self.tree.yview_moveto(1.0)
         except mariadb.Error as e:
@@ -782,20 +802,20 @@ class Main(tk.Frame):
             mb.showerror("Ошибка!", msg)
 
     # ===РЕДАКТИРОВАНИЕ ДАННЫХ В БД===================================================================
-    def update_record(self, data, dispetcher, town, street, house, padik, type_lift, prichina, fio_meh, date_to_go, comment):
+    def update_record(self, data, dispetcher, town, street, house, padik, type_lift, prichina, fio_meh, date_to_go, comment, callback):
         self.session.get("type_button")
         try:
             date_object = datetime.datetime.strptime(data, time_format)
             if date_to_go == None or date_to_go == '':
                 date_to_go = None
-                val1 = (int(date_object.timestamp()),
+                value_to_edit = (int(date_object.timestamp()),
                         dispetcher, town, street, house,
                         padik, type_lift, prichina, fio_meh,
                         date_to_go, comment)
             else:
                 try:
                     date_object2 = datetime.datetime.strptime(date_to_go, time_format)
-                    val1 = (int(date_object.timestamp()),
+                    value_to_edit = (int(date_object.timestamp()),
                             dispetcher, town, street, house,
                             padik, type_lift, prichina,fio_meh,
                         int(date_object2.timestamp()), comment)
@@ -829,13 +849,15 @@ class Main(tk.Frame):
                                         z.Дата_запуска = ?, 
                                         z.Комментарий = ?
                                     WHERE z.ID = ?;''',
-                               (val1 + (self.tree.set(self.tree.selection()[0], '#11'),)))
+                               (value_to_edit + (self.tree.set(self.tree.selection()[0], '#11'),)))
                 connection.commit()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.event_of_button(f'{self.session.get("type_button")}')
         msg = f"Запись отредактирована!"
         mb.showinfo("Информация", msg)
+        if callback:
+            callback()
 
     # ===ФУНКЦИЯ КНОПКИ ЧЕРЕЗ КОММЕНТИРОВАНИЯ================================================
     def comment(self, comment, callback):
@@ -854,7 +876,7 @@ class Main(tk.Frame):
         mb.showinfo("Информация", msg)
 
     # ===ФУНКЦИЯ КНОПКИ ПОИСКА ПО АДРЕСУ===============================================
-    def search_records(self, town, adress, calendar1, calendar2):
+    def search_records(self, town, adress, calendar1, calendar2, callback):
         self.town = town
         self.adress = adress
         self.calendar1 = calendar1
@@ -865,29 +887,13 @@ class Main(tk.Frame):
         unix_time2 = int(time_obj2.timestamp()) + 86400
         try:
             conn = mariadb.connect(user=user, password=password, host=host, port=port, database=database)
-            cur = conn.cursor()
-            cur.execute(f'''SELECT z.Номер_заявки,
-                           FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
-                           w.ФИО AS Диспетчер,
-                           g.город AS Город,
-                           CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                           тип_лифта,
-                           причина,
-                           m.ФИО,
-                           FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
-                           комментарий,
-                           z.id
-                            FROM {table_zayavki} z
-                            JOIN {table_workers} w ON z.id_диспетчер = w.id
-                            JOIN {table_goroda} g ON z.id_город = g.id
-                            JOIN {table_street} s ON z.id_улица = s.id
-                            JOIN {table_doma} d ON z.id_дом = d.id
-                            JOIN {table_padik} p ON z.id_подъезд = p.id
-                            JOIN {table_workers} m ON z.id_механик = m.id
-                            WHERE CONCAT(s.улица, ', ', d.номер, ', ', p.номер) LIKE ? 
-                            and Дата_заявки BETWEEN "{unix_time1}" and "{unix_time2}"''', (f"%{adress}%",))
+            cursor = conn.cursor()
+            query = self.query()
+            query += f''' WHERE CONCAT(s.улица, ', ', d.номер, ', ', p.номер) LIKE "%{adress}%" 
+                            and Дата_заявки BETWEEN "{unix_time1}" and "{unix_time2}"'''
+            cursor.execute(query)
             [self.tree.delete(i) for i in self.tree.get_children()]
-            for row in cur.fetchall():
+            for row in cursor.fetchall():
                 self.tree.insert('', 'end', values=row)
             children = self.tree.get_children()
             if children:
@@ -900,6 +906,8 @@ class Main(tk.Frame):
         else:
             if not self.tree.get_children():
                 showinfo('Информация', "Нет заявок")
+        if callback:
+            callback()
 
     def open_search_dialog(self):
         Search()
@@ -1061,7 +1069,6 @@ class Main(tk.Frame):
         date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%y, %H:%M")
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
-        d = (datetime.datetime.now(tz=None)).strftime("%d")
         val2 = [self.selected_city, self.entry_text3.get(),
                 self.entry_text4.get(), self.prich5.get(), self.entry_text7.get()]
         naz = ['Город', 'Адрес', 'Тип лифта', 'Причина остановки', 'ФИО механика']
@@ -1141,6 +1148,7 @@ class Main(tk.Frame):
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         msg = f"Запись успешно добавлена! Её порядковый номер - {number_application}"
         mb.showinfo("Информация", msg)
+        self.event_of_button(f"{self.session.get('type_button')}")
         self.obnov()
 
     # ======ФУНКЦИЯ СПРОСА О ЗАКРЫТИИ ПРОГРАММЫ=================================================
@@ -1208,14 +1216,14 @@ class Tooltip:
             self.tooltip_window = None
 
 # ====ВЫЗОВ ФУНКЦИЙ КНОПОК РЕДАКТИРОВАНИЯ==================================================================
-class Child(tk.Toplevel):
+class Edit(tk.Toplevel):
     def __init__(self, rows):
         self.rows = rows
         super().__init__(root)
-        self.init_child()
+        self.init_edit()
         self.view = app
 
-    def init_child(self):
+    def init_edit(self):
         self.title('Редактировать')
         self.geometry('500x500+0+0')
         self.resizable(False, False)
@@ -1479,8 +1487,8 @@ class Child(tk.Toplevel):
             self.combobox_stop.get(),
             self.get_selected_meh_id(),
             self.calen2.get(),
-            self.entry_comment.get())
-        self.destroy()
+            self.entry_comment.get(), self.destroy())
+
 
 class Search(tk.Toplevel):
     def __init__(self):
@@ -1624,7 +1632,7 @@ class Search(tk.Toplevel):
         # Создание и размещение кнопки "Поиск" большого размера слева снизу
         btn_search = ttk.Button(toolbar7, text='Поиск', style="Green.TButton", command=self.destroy, width=20)
         btn_search.pack(side=tk.BOTTOM)  # Установить координаты, ширину и высоту
-        btn_search.bind('<Button-1>', lambda event: (self.view.search_records(self.city, self.entry_for_address.get(), self.calendar1.get(), self.calendar2.get())))
+        btn_search.bind('<Button-1>', lambda event: (self.view.search_records(self.city, self.entry_for_address.get(), self.calendar1.get(), self.calendar2.get(), self.destroy())))
 
     def on_unmap(self, event):
         self.deiconify()  # Отменяем сворачивание дочернего окна
@@ -1829,6 +1837,6 @@ if __name__ == "__main__":
     app.pack()
     root.title("Электронный журнал")
     root.geometry("1920x1080")
-    root.iconphoto(False, tk.PhotoImage(file='mitol.png'))
+    root.iconphoto(False, tk.PhotoImage(file='icon.png'))
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
