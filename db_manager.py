@@ -25,7 +25,8 @@ class DataBaseManager:
             'table_workers': self.data['table_workers'],
             'table_street': self.data['table_street'],
             'table_doma': self.data['table_doma'],
-            'table_padik': self.data['table_padik']
+            'table_padik': self.data['table_padik'],
+            'table_lifts': self.data['table_lifts']
         }
         return db_tables
 

@@ -13,7 +13,7 @@ class Afternoon_statistic(tk.Toplevel):
 
         self.calendar = DateEntry(self, locale='ru_RU', font=1)
         self.calendar.bind("<<DateEntrySelected>>", self.print_info)
-        self.calendar.pack(side=tk.TOP, anchor=tk.NW)
+        self.calendar.pack(side=tk.TOP, anchor=tk.N)
 
         self.label_info_bd = tk.Label(borderwidth=1, width=50, height=10, relief="raised", text="",
                                       font='Times 12')
@@ -27,8 +27,8 @@ class Afternoon_statistic(tk.Toplevel):
         self.tree2.column('Кол_во', width=90, anchor=tk.CENTER, stretch=True)
 
         self.tree2.heading('Город', text='Город')
-        self.tree2.heading('Застр', text='Застрев')
-        self.tree2.heading('Неиспр', text='Неиспр')
+        self.tree2.heading('Застр', text='Застреваний')
+        self.tree2.heading('Неиспр', text='Неисправностей')
         self.tree2.heading('Кол_во', text='Кол-во')
         self.tree2.pack(side="left", fill="both", expand=True)
         self.label_info_bd.pack(side=tk.TOP)
