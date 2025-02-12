@@ -1,10 +1,11 @@
 from imports import *
 
 class Change_months():
-    def __init__(self, text, db_config, enabled, session, month_label, year_label, list_months, tree, month_index, year_index):
+    def __init__(self, text, db_tables, db_manager, enabled, session, month_label, year_label, list_months, tree, month_index, year_index):
         self.tree = tree
         self.enabled = enabled
-        self.db_config = db_config
+        self.db_tables = db_tables
+        self.db_manager = db_manager
         self.text = text
         self.session = session
         self.month_label = month_label
@@ -12,21 +13,14 @@ class Change_months():
         self.list_months = list_months
         self.month_index = month_index
         self.year_index = year_index
-        self.table_zayavki = self.db_config["table_zayavki"]
-        self.table_workers = self.db_config["table_workers"]
-        self.table_street = self.db_config["table_street"]
-        self.table_goroda = self.db_config["table_goroda"]
-        self.table_doma = self.db_config["table_doma"]
-        self.table_padik = self.db_config["table_padik"]
+        self.table_zayavki = self.db_tables["table_zayavki"]
+        self.table_workers = self.db_tables["table_workers"]
+        self.table_street = self.db_tables["table_street"]
+        self.table_goroda = self.db_tables["table_goroda"]
+        self.table_doma = self.db_tables["table_doma"]
+        self.table_padik = self.db_tables["table_padik"]
         self.change_months()
 
-    # Подключение к MariaDB
-    def connect_to_db(self):
-        return mariadb.connect(user=self.db_config['db_user'],
-                               password=self.db_config['db_password'],
-                               host=self.db_config['db_host'],
-                               port=self.db_config['db_port'],
-                               database=self.db_config['db_name'])
 
     def change_months(self):
         type_button = self.session
@@ -95,14 +89,17 @@ class Change_months():
 
     def execute_query(self, query):
         try:
-            with closing(self.connect_to_db()) as connection:
+            # Создаем новое соединение для выполнения запроса
+            with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor()
                 cursor.execute(query)
                 self.update_treeview(cursor.fetchall())
                 connection.commit()
                 self.tree.yview_moveto(1.0)
         except mariadb.Error as e:
+            print(e)
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+
 
     def update_treeview(self, rows):
         [self.tree.delete(i) for i in self.tree.get_children()]
