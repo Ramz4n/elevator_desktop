@@ -1,9 +1,10 @@
 from imports import *
 
 class Afternoon_statistic(tk.Toplevel):
-    def __init__(self, parent, db_config):
+    def __init__(self, parent, db_config, enabled):
         super().__init__(parent)
         self.db_config = db_config
+        self.enabled = enabled
         self.visual()
 
     def visual(self):
@@ -47,7 +48,7 @@ class Afternoon_statistic(tk.Toplevel):
                                     SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность', 'Застревание') THEN 1 ELSE 0 END) as Кол_во
                                     FROM {self.db_config.data['table_zayavki']} z
                                     JOIN {self.db_config.data['table_goroda']} g ON z.id_город = g.id
-                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%Y') = ?
+                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%Y') = ? AND pc_id = {self.enabled}
                                     GROUP BY Город;''',
                                (self.selected_date_str,))
                 data = cursor.fetchall()  # Получаем данные из запроса

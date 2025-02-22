@@ -18,7 +18,7 @@ import pymysql
 import sys
 from speech import Speech_recorder
 import threading
-from menu import Menu_errors
+from menu_errors import Menu_errors
 from afternoon_statistic import Afternoon_statistic
 #from sendler import Telegram_sendler
 from telegram import Bot

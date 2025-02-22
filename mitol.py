@@ -33,8 +33,8 @@ class Main(tk.Frame):
         fm.add_command(label="Открыть в экселе", command=self.open_bd_to_excel)
         fm.add_command(label="Дневная статистика", command=self.afternoon_statistic)
         # =======1 ОСНОВНОЙ TOOLBAR====================================================================
-        toolbar2 = tk.Frame(borderwidth=1, relief="raised")
-        toolbar2.pack(side=tk.TOP, fill=tk.X)
+        toolbar_general = tk.Frame(borderwidth=1, relief="raised")
+        toolbar_general.pack(side=tk.TOP, fill=tk.X)
         # ===============================№1 ДИСПЕТЧЕРА===========================================================
         try:
             with closing(self.db_manager.connect()) as connection:
@@ -56,30 +56,30 @@ class Main(tk.Frame):
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
         # Создаем toolbar для диспетчеров
-        toolbar3 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
-        toolbar3.pack(side=tk.LEFT, fill=tk.Y)
+        toolbar_dispetcher = tk.Frame(toolbar_general, borderwidth=1, relief="raised")
+        toolbar_dispetcher.pack(side=tk.LEFT, fill=tk.Y)
 
-        self.label1 = tk.Label(toolbar3, borderwidth=1, width=21, relief="raised", text="Диспетчер", font='Calibri 16 bold')
-        self.label1.pack(side=tk.TOP, fill=tk.X)
+        label_dispetcher = tk.Label(toolbar_dispetcher, borderwidth=1, width=21, relief="raised", text="Диспетчер", font='Calibri 16 bold')
+        label_dispetcher.pack(side=tk.TOP, fill=tk.X)
 
-        self.canvas2 = tk.Canvas(toolbar3, width=100)
-        self.scrollbar2 = ttk.Scrollbar(toolbar3, orient="vertical", command=self.canvas2.yview)
-        self.scrollable_frame2 = ttk.Frame(self.canvas2)
+        self.canvas_dispetcher = tk.Canvas(toolbar_dispetcher, width=100)
+        y_scrollbar_dispetcher = ttk.Scrollbar(toolbar_dispetcher, orient="vertical", command=self.canvas_dispetcher.yview)
+        scrollable_frame_dispetcher = ttk.Frame(self.canvas_dispetcher)
 
-        self.scrollable_frame2.bind(
+        scrollable_frame_dispetcher.bind(
                             "<Configure>",
-                            lambda e: self.canvas2.configure(
-                                scrollregion=self.canvas2.bbox("all")))
-        self.canvas2.create_window((0, 0), window=self.scrollable_frame2, anchor="nw")
-        self.canvas2.configure(yscrollcommand=self.scrollbar2.set)
+                            lambda e: self.canvas_dispetcher.configure(
+                                scrollregion=self.canvas_dispetcher.bbox("all")))
+        self.canvas_dispetcher.create_window((0, 0), window=scrollable_frame_dispetcher, anchor="nw")
+        self.canvas_dispetcher.configure(yscrollcommand=y_scrollbar_dispetcher.set)
 
-        self.canvas2.pack(side="left", fill="both", expand=True)
-        self.scrollbar2.pack(side="right", fill="y")
+        self.canvas_dispetcher.pack(side="left", fill="both", expand=True)
+        y_scrollbar_dispetcher.pack(side="right", fill="y")
 
         # Привязка событий колесика мыши только к Canvas
-        self.canvas2.bind("<MouseWheel>", self._on_mousewheel2)
-        self.canvas2.bind("<Button-4>", self._on_mousewheel2)
-        self.canvas2.bind("<Button-5>", self._on_mousewheel2)
+        self.canvas_dispetcher.bind("<MouseWheel>", self._on_mousewheel2)
+        self.canvas_dispetcher.bind("<Button-4>", self._on_mousewheel2)
+        self.canvas_dispetcher.bind("<Button-5>", self._on_mousewheel2)
 
         self.workers_dict = {disp['ФИО']: disp['id'] for disp in data_workers}
 
@@ -88,7 +88,7 @@ class Main(tk.Frame):
         self.disp.trace("w", self.on_select_disp)
 
         for disp in data_workers:
-            radiobutton = tk.Radiobutton(self.scrollable_frame2, font=('Calibri', 16), text=disp['ФИО'],
+            radiobutton = tk.Radiobutton(scrollable_frame_dispetcher, font=('Calibri', 16), text=disp['ФИО'],
                                          variable=self.disp,
                                          value=disp['ФИО'])
             radiobutton.pack(anchor="w")
@@ -97,156 +97,156 @@ class Main(tk.Frame):
             radiobutton.bind("<Button-5>", self._on_mousewheel2)
 
         # =======2 ГОРОДА===========================================================================
-        toolbar4 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
-        toolbar4.pack(side=tk.LEFT, fill=tk.Y)
+        toolbar_city = tk.Frame(toolbar_general, borderwidth=1, relief="raised")
+        toolbar_city.pack(side=tk.LEFT, fill=tk.Y)
 
         try:
             with closing(self.db_manager.connect()) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f"select id, город from {self.goroda}")
-                data_towns = cursor.fetchall()
+                data_cities = cursor.fetchall()
         except mariadb.Error as e:
             messagebox.showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
             return
 
-        default_town = data_towns[0] if data_towns else ''
+        default_town = data_cities[0] if data_cities else ''
 
-        self.label2 = tk.Label(toolbar4, borderwidth=1, width=21, relief="raised", text="Город", font='Calibri 16 bold')
-        self.label2.pack(side=tk.TOP, fill=tk.X)
+        label_city = tk.Label(toolbar_city, borderwidth=1, width=21, relief="raised", text="Город", font='Calibri 16 bold')
+        label_city.pack(side=tk.TOP, fill=tk.X)
 
-        self.canvas = tk.Canvas(toolbar4, width=100)
-        self.scrollbar = ttk.Scrollbar(toolbar4, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.canvas)
+        self.canvas_city = tk.Canvas(toolbar_city, width=100)
+        y_scrollbar_city = ttk.Scrollbar(toolbar_city, orient="vertical", command=self.canvas_city.yview)
+        scrollable_frame_city = ttk.Frame(self.canvas_city)
 
-        self.scrollable_frame.bind(
+        scrollable_frame_city.bind(
             "<Configure>",
-            lambda e: self.canvas.configure(
-                scrollregion=self.canvas.bbox("all")
+            lambda e: self.canvas_city.configure(
+                scrollregion=self.canvas_city.bbox("all")
             )
         )
-        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.canvas_city.create_window((0, 0), window=scrollable_frame_city, anchor="nw")
+        self.canvas_city.configure(yscrollcommand=y_scrollbar_city.set)
 
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
+        self.canvas_city.pack(side="left", fill="both", expand=True)
+        y_scrollbar_city.pack(side="right", fill="y")
 
         # Привязка событий колесика мыши только к Canvas
-        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
-        self.canvas.bind("<Button-4>", self._on_mousewheel)
-        self.canvas.bind("<Button-5>", self._on_mousewheel)
+        self.canvas_city.bind("<MouseWheel>", self._on_mousewheel)
+        self.canvas_city.bind("<Button-4>", self._on_mousewheel)
+        self.canvas_city.bind("<Button-5>", self._on_mousewheel)
 
-        self.city = tk.StringVar(value=default_town['город'] if default_town else '')
-        self.city.trace("w", self.on_select_city)
+        self.value_city = tk.StringVar(value=default_town['город'] if default_town else '')
+        self.value_city.trace("w", self.on_select_city)
 
-        for town in data_towns:
-            radiobutton = tk.Radiobutton(self.scrollable_frame, font=('Calibri', 16), text=town['город'],
-                                         variable=self.city,
-                                         value=town['город'])
+        for city in data_cities:
+            radiobutton = tk.Radiobutton(scrollable_frame_city, font=('Calibri', 16), text=city['город'],
+                                         variable=self.value_city,
+                                         value=city['город'])
             radiobutton.pack(anchor="w")
             radiobutton.bind("<MouseWheel>", self._on_mousewheel)
             radiobutton.bind("<Button-4>", self._on_mousewheel)
             radiobutton.bind("<Button-5>", self._on_mousewheel)
         # =======3 БЛОК АДРЕСОВ========================================================================
-        toolbar5 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
-        toolbar5.pack(side=tk.LEFT, fill=tk.Y)
+        toolbar_addresses = tk.Frame(toolbar_general, borderwidth=1, relief="raised")
+        toolbar_addresses.pack(side=tk.LEFT, fill=tk.Y)
 
-        self.label3 = tk.Label(toolbar5, borderwidth=1, width=21, relief="raised", text="Адрес", font='Calibri 16 bold')
-        self.frame3 = tk.Frame()
-        self.entry_text3 = tk.StringVar()
-        self.entry3 = tk.Entry(toolbar5, textvariable=self.entry_text3, width=33)
-        self.entry3.bind('<KeyRelease>', self.check_input_address)
-        self.label3.pack(side=tk.TOP, fill=tk.X)
-        self.entry3.pack(side=tk.TOP, expand=True, fill=tk.X)
+        label_addresses = tk.Label(toolbar_addresses, borderwidth=1, width=21, relief="raised", text="Адрес", font='Calibri 16 bold')
+        frame_addresses = tk.Frame()
+        self.value_address = tk.StringVar()
+        self.entry_addresses = tk.Entry(toolbar_addresses, textvariable=self.value_address, width=33)
+        self.entry_addresses.bind('<KeyRelease>', self.check_input_address)
+        label_addresses.pack(side=tk.TOP, fill=tk.X)
+        self.entry_addresses.pack(side=tk.TOP, expand=True, fill=tk.X)
 
         self.listbox_values = tk.Variable()
-        self.listbox = tk.Listbox(toolbar5, listvariable=self.listbox_values, width=25, font='Calibri 16')
-        self.listbox.bind('<<ListboxSelect>>', self.on_change_selection_address)
+        self.listbox_addresses = tk.Listbox(toolbar_addresses, listvariable=self.listbox_values, width=25, font='Calibri 16')
+        self.listbox_addresses.bind('<<ListboxSelect>>', self.on_change_selection_address)
 
         # Создаем горизонтальный скроллбар
-        self.scrollbar_x = tk.Scrollbar(toolbar5, orient=tk.HORIZONTAL)
-        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+        x_scrollbar_addresses = tk.Scrollbar(toolbar_addresses, orient=tk.HORIZONTAL)
+        x_scrollbar_addresses.pack(side=tk.BOTTOM, fill=tk.X)
 
         # Связываем скроллбар с Listbox
-        self.listbox.config(xscrollcommand=self.scrollbar_x.set)
-        self.scrollbar_x.config(command=self.listbox.xview)
+        self.listbox_addresses.config(xscrollcommand=x_scrollbar_addresses.set)
+        x_scrollbar_addresses.config(command=self.listbox_addresses.xview)
 
         # Создаем вертикальный скроллбар
-        self.scrollbar_y = tk.Scrollbar(toolbar5, orient=tk.VERTICAL)
-        self.scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+        y_scrollbar_addresses = tk.Scrollbar(toolbar_addresses, orient=tk.VERTICAL)
+        y_scrollbar_addresses.pack(side=tk.RIGHT, fill=tk.Y)
 
         # Связываем скроллбар с Listbox
-        self.listbox.config(yscrollcommand=self.scrollbar_y.set)
-        self.scrollbar_y.config(command=self.listbox.yview)
+        self.listbox_addresses.config(yscrollcommand=y_scrollbar_addresses.set)
+        y_scrollbar_addresses.config(command=self.listbox_addresses.yview)
 
-        self.listbox.pack(side=tk.TOP, expand=True)
-        self.frame3.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
+        self.listbox_addresses.pack(side=tk.TOP, expand=True)
+        frame_addresses.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
         # ======4 БЛОК КОД С ТИПАМИ ЛИФТОВ==================================================================
-        toolbar6 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
-        toolbar6.pack(side=tk.LEFT, fill=tk.Y)
-        self.label4 = tk.Label(toolbar6, borderwidth=1, width=12, relief="raised", text="Тип лифта", font='Calibri 16 bold')
-        self.frame4 = tk.Frame()
-        self.entry_text4 = tk.StringVar()
-        self.entry4 = tk.Entry(toolbar6, textvariable=self.entry_text4, width=18)
-        self.entry4.bind('<KeyRelease>', self.check_input_lifts)
-        self.label4.pack(side=tk.TOP, fill=tk.X)
-        self.entry4.pack(side=tk.TOP, expand=True, fill=tk.X)
+        toolbar_type_lifts = tk.Frame(toolbar_general, borderwidth=1, relief="raised")
+        toolbar_type_lifts.pack(side=tk.LEFT, fill=tk.Y)
+        label_type_lifts = tk.Label(toolbar_type_lifts, borderwidth=1, width=12, relief="raised", text="Тип лифта", font='Calibri 16 bold')
+        frame_type_lifts = tk.Frame()
+        self.value_type_lifts = tk.StringVar()
+        self.entry_type_lifts = tk.Entry(toolbar_type_lifts, textvariable=self.value_type_lifts, width=18)
+        self.entry_type_lifts.bind('<KeyRelease>', self.check_input_lifts)
+        label_type_lifts.pack(side=tk.TOP, fill=tk.X)
+        self.entry_type_lifts.pack(side=tk.TOP, expand=True, fill=tk.X)
         self.listbox_values_type = tk.Variable()
-        self.listbox_type = tk.Listbox(toolbar6, listvariable=self.listbox_values_type, width=14, font='Calibri 16')
+        self.listbox_type = tk.Listbox(toolbar_type_lifts, listvariable=self.listbox_values_type, width=14, font='Calibri 16')
         self.listbox_type.bind('<<ListboxSelect>>', self.on_change_selection_lift)
 
         # Создаем горизонтальный скроллбар
-        self.scrollbar_x = tk.Scrollbar(toolbar6, orient=tk.HORIZONTAL)
-        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+        x_scrollbar_type_lifts = tk.Scrollbar(toolbar_type_lifts, orient=tk.HORIZONTAL)
+        x_scrollbar_type_lifts.pack(side=tk.BOTTOM, fill=tk.X)
 
         # Связываем скроллбар с Listbox
-        self.listbox_type.config(xscrollcommand=self.scrollbar_x.set)
-        self.scrollbar_x.config(command=self.listbox_type.xview)
+        self.listbox_type.config(xscrollcommand=x_scrollbar_type_lifts.set)
+        x_scrollbar_type_lifts.config(command=self.listbox_type.xview)
 
         self.listbox_type.pack(side=tk.TOP, expand=True, fill=tk.X)
-        self.frame4.pack(side=tk.LEFT, anchor=tk.NW, expand=True, fill=tk.X)
+        frame_type_lifts.pack(side=tk.LEFT, anchor=tk.NW, expand=True, fill=tk.X)
         # ======5 БЛОК ПРИЧИНА ОСТАНОВКИ ============================================
-        toolbar7 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
-        toolbar7.pack(side=tk.LEFT, fill=tk.Y)
-        frame5 = tk.Frame()
-        label5 = tk.Label(toolbar7, borderwidth=1, width=14, relief="raised", text="Причина", font='Calibri 16 bold')
-        label5.pack(fill=tk.X)
-        self.prichina = ['Неисправность', 'Застревание', 'Остановлен', 'Связь', 'Линейная']
-        self.prich5 = tk.StringVar(value='?')
-        for pr in self.prichina:
-            lang_btn3 = tk.Radiobutton(toolbar7, text=pr, value=pr, variable=self.prich5, font='Calibri  16')
-            lang_btn3.pack(anchor=tk.NW, expand=True)
-        frame5.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
+        toolbar_prichina = tk.Frame(toolbar_general, borderwidth=1, relief="raised")
+        toolbar_prichina.pack(side=tk.LEFT, fill=tk.Y)
+        frame_prichina = tk.Frame()
+        label_prichina = tk.Label(toolbar_prichina, borderwidth=1, width=14, relief="raised", text="Причина", font='Calibri 16 bold')
+        label_prichina.pack(fill=tk.X)
+        self.list_prichina = ['Неисправность', 'Застревание', 'Остановлен', 'Связь', 'Линейная']
+        self.value_prichina = tk.StringVar(value='?')
+        for pr in self.list_prichina:
+            btn_prichina = tk.Radiobutton(toolbar_prichina, text=pr, value=pr, variable=self.value_prichina, font='Calibri  16')
+            btn_prichina.pack(anchor=tk.NW, expand=True)
+        frame_prichina.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
         # ======6 БЛОК FIO МЕХАНИКА =====================================================
-        toolbar9 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
-        toolbar9.pack(side=tk.LEFT, fill=tk.Y)
-        self.label7 = tk.Label(toolbar9, borderwidth=1, width=18, relief="raised", text="ФИО механика", font='Calibri  16 bold')
-        self.frame7 = tk.Frame()
-        self.entry_text7 = tk.StringVar(value='')
-        self.entry7 = tk.Entry(toolbar9, textvariable=self.entry_text7, width=28)
-        self.entry7.bind('<KeyRelease>', self.check_input_fio)
-        self.label7.pack(side=tk.TOP, fill=tk.X)
-        self.entry7.pack(side=tk.TOP, expand=True, fill=tk.X)
-        self.listbox_values7 = tk.Variable()
-        self.listbox7 = tk.Listbox(toolbar9, width=21, listvariable=self.listbox_values7, font='Calibri 16')
-        self.listbox7.bind('<<ListboxSelect>>', self.on_change_selection_fio)
+        toolbar_fio_meh = tk.Frame(toolbar_general, borderwidth=1, relief="raised")
+        toolbar_fio_meh.pack(side=tk.LEFT, fill=tk.Y)
+        label_fio_meh = tk.Label(toolbar_fio_meh, borderwidth=1, width=18, relief="raised", text="ФИО механика", font='Calibri  16 bold')
+        frame_fio_meh = tk.Frame()
+        self.value_in_entry_fio_meh = tk.StringVar(value='')
+        self.entry_fio_meh = tk.Entry(toolbar_fio_meh, textvariable=self.value_in_entry_fio_meh, width=28)
+        self.entry_fio_meh.bind('<KeyRelease>', self.check_input_fio)
+        label_fio_meh.pack(side=tk.TOP, fill=tk.X)
+        self.entry_fio_meh.pack(side=tk.TOP, expand=True, fill=tk.X)
+        self.values_listbox_fio_meh = tk.Variable()
+        self.listbox_fio_meh = tk.Listbox(toolbar_fio_meh, width=21, listvariable=self.values_listbox_fio_meh, font='Calibri 16')
+        self.listbox_fio_meh.bind('<<ListboxSelect>>', self.on_change_selection_fio)
 
         # Создаем горизонтальный скроллбар
-        self.scrollbar_x = tk.Scrollbar(toolbar9, orient=tk.HORIZONTAL)
-        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+        x_scrollbar_fio_meh = tk.Scrollbar(toolbar_fio_meh, orient=tk.HORIZONTAL)
+        x_scrollbar_fio_meh.pack(side=tk.BOTTOM, fill=tk.X)
 
         # Связываем скроллбар с Listbox
-        self.listbox7.config(xscrollcommand=self.scrollbar_x.set)
-        self.scrollbar_x.config(command=self.listbox7.xview)
+        self.listbox_fio_meh.config(xscrollcommand=x_scrollbar_fio_meh.set)
+        x_scrollbar_fio_meh.config(command=self.listbox_fio_meh.xview)
 
         # Создаем вертикальный скроллбар
-        self.scrollbar_y = tk.Scrollbar(toolbar9, orient=tk.VERTICAL)
-        self.scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+        y_scrollbar_fio_meh = tk.Scrollbar(toolbar_fio_meh, orient=tk.VERTICAL)
+        y_scrollbar_fio_meh.pack(side=tk.RIGHT, fill=tk.Y)
 
         # Связываем скроллбар с Listbox
-        self.listbox7.config(yscrollcommand=self.scrollbar_y.set)
-        self.scrollbar_y.config(command=self.listbox7.yview)
+        self.listbox_fio_meh.config(yscrollcommand=y_scrollbar_fio_meh.set)
+        y_scrollbar_fio_meh.config(command=self.listbox_fio_meh.yview)
 
-        self.listbox7.pack(side=tk.TOP, expand=True, fill=tk.X)
+        self.listbox_fio_meh.pack(side=tk.TOP, expand=True, fill=tk.X)
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
@@ -255,59 +255,48 @@ class Main(tk.Frame):
             for d in self.data_meh:
                 self.data_meh_name = f"{d['ФИО']}"
                 self.data_meh_id = f"{d['id']}"
-                self.listbox7.insert(tk.END, self.data_meh_name)
+                self.listbox_fio_meh.insert(tk.END, self.data_meh_name)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.frame7.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
-        #==========toolbar with buttons======================================================
-        #toolbar_for_buttons = tk.Frame(toolbar2, borderwidth=1, relief="raised")
-        #toolbar_for_buttons.pack(side=tk.LEFT)
+        frame_fio_meh.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
 
-        #====================================================================================
-        # =======NEW TOOLBAR==============================================================
-        toolbar = tk.Frame(bd=2, borderwidth=1, relief="raised")
-        toolbar.pack(side=tk.TOP, fill=tk.X, anchor=tk.N)
-        helv36 = tkFont.Font(family='Helvetica', size=10, weight=tkFont.BOLD)
         # ================КНОПКИ========================================================
-        tool1 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
-        tool1.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
-        btn_open_dialog = tk.Button(tool1, text='Добавить заявку', command=self.sql_insert, bg='#d7d8e0', compound=tk.LEFT, width=19, height=1, font=helv36)
+        helv36 = tkFont.Font(family='Helvetica', size=10, weight=tkFont.BOLD)
+        general_tool_button = tk.Frame(toolbar_general, borderwidth=1, relief="raised")
+        general_tool_button.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+        btn_open_dialog = tk.Button(general_tool_button, text='Добавить заявку', command=self.sql_insert, bg='#d7d8e0', compound=tk.LEFT, width=19, height=1, font=helv36)
         btn_open_dialog.pack(side=tk.TOP)
-        btn_refresh = tk.Button(tool1, text='Обновить', bg='#d7d8e0', compound=tk.TOP, command=lambda: self.event_of_button('all'), width=19, font=helv36)
+        btn_refresh = tk.Button(general_tool_button, text='Обновить', bg='#d7d8e0', compound=tk.TOP, command=lambda: self.event_of_button('all'), width=19, font=helv36)
         btn_refresh.pack(side=tk.TOP)
-        btn_search = tk.Button(tool1, text='Поиск адреса', bg='#d7d8e0', compound=tk.TOP, command=lambda: Search(), width=19, font=helv36)
+        btn_search = tk.Button(general_tool_button, text='Поиск адреса', bg='#d7d8e0', compound=tk.TOP, command=lambda: Search(), width=19, font=helv36)
         btn_search.pack(side=tk.TOP)
         # =================КНОПКИ========================================================
-        btn_stop = tk.Button(tool1, text='Остановленные лифты', bg='#FFB3AB', compound=tk.TOP, command=lambda: self.event_of_button('stopped'), width=19, font=helv36)
+        btn_stop = tk.Button(general_tool_button, text='Остановленные лифты', bg='#FFB3AB', compound=tk.TOP, command=lambda: self.event_of_button('stopped'), width=19, font=helv36)
         btn_stop.pack(side=tk.TOP)
-        btn_open_ = tk.Button(tool1, text='Незакрытые заявки', bg='#4897FF', compound=tk.TOP, command=lambda: self.event_of_button('open'), width=19, font=helv36)
+        btn_open_ = tk.Button(general_tool_button, text='Незакрытые заявки', bg='#4897FF', compound=tk.TOP, command=lambda: self.event_of_button('open'), width=19, font=helv36)
         btn_open_.pack(side=tk.TOP)
-        btn_start = tk.Button(tool1, text='Запущенные лифты', bg='#00AD0E', compound=tk.TOP, command=lambda: self.event_of_button('started'), width=19, font=helv36)
+        btn_start = tk.Button(general_tool_button, text='Запущенные лифты', bg='#00AD0E', compound=tk.TOP, command=lambda: self.event_of_button('started'), width=19, font=helv36)
         btn_start.pack(side=tk.TOP)
         #=====================================================================================
-        tool4 = tk.Frame(toolbar)
-        tool4.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
-        tool5 = tk.Frame(toolbar, borderwidth=1, relief="raised")
-        tool5.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
         self.is_on = True
         self.enabled = IntVar()
         self.enabled.set(self.pc_id)
-        self.my_label = Label(tool1,
+        self.my_label = Label(general_tool_button,
                          text="Мои заявки",
                          fg="green",
                          font=("Helvetica", 10))
         self.my_label.pack()
         self.on = PhotoImage(file="on.png")
         self.off = PhotoImage(file="off.png")
-        self.on_button = Button(tool1, image=self.off, bd=0, command=self.switch)
+        self.on_button = Button(general_tool_button, image=self.off, bd=0, command=self.switch)
         self.on_button.pack()
-        btn_lineyka_close = tk.Button(tool1, text='Линейные закрытые', compound=tk.TOP,
+        btn_lineyka_close = tk.Button(general_tool_button, text='Линейные закрытые', compound=tk.TOP,
                               command=lambda: self.event_of_button('line_close'), width=19, font=helv36, bg='#BE81FF')
         btn_lineyka_close.pack(side=tk.TOP)
-        btn_lineyka_open = tk.Button(tool1, text='Линейные открытые', compound=tk.TOP,
+        btn_lineyka_open = tk.Button(general_tool_button, text='Линейные открытые', compound=tk.TOP,
                                 command=lambda: self.event_of_button('line_open'), width=19, font=helv36)
         btn_lineyka_open.pack(side=tk.TOP)
-        btn_svyaz = tk.Button(tool1, text='Связь', compound=tk.TOP,
+        btn_svyaz = tk.Button(general_tool_button, text='Связь', compound=tk.TOP,
                                      command=lambda: self.event_of_button('svyaz'), width=19, font=helv36)
         btn_svyaz.pack(side=tk.TOP)
         # === ПЕРЕЛИСТЫВАНИЕ БД ПО МЕСЯЦАМ=====================================================================
@@ -315,29 +304,29 @@ class Main(tk.Frame):
                        "Май", "Июнь", "Июль", "Август",
                        "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
 
-        toolbar = tk.Frame(root)
-        toolbar.pack(pady=10)
+        toolbar_btn_month = tk.Frame(root)
+        toolbar_btn_month.pack(pady=10)
 
-        btn_refresh_forward = tk.Button(toolbar, text='Следующий месяц', bg='#d7d8e0', compound=tk.CENTER,
+        btn_refresh_forward = tk.Button(toolbar_btn_month, text='Следующий месяц', bg='#d7d8e0', compound=tk.CENTER,
                                         command=lambda: self.change_months("forward"), width=19, font='helv36')
         btn_refresh_forward.grid(row=0, column=3, padx=5)
 
-        self.year_label = Label(toolbar, text='', font='Calibri 16 bold')
+        self.year_label = Label(toolbar_btn_month, text='', font='Calibri 16 bold')
         self.year_label.grid(row=0, column=2, padx=5)
 
-        self.month_label = Label(toolbar, text='', font='Calibri 16 bold')
+        self.month_label = Label(toolbar_btn_month, text='', font='Calibri 16 bold')
         self.month_label.grid(row=0, column=1, padx=5)
 
-        btn_refresh_backward = tk.Button(toolbar, text='Предыдущий месяц', bg='#d7d8e0', compound=tk.CENTER,
+        btn_refresh_backward = tk.Button(toolbar_btn_month, text='Предыдущий месяц', bg='#d7d8e0', compound=tk.CENTER,
                                          command=lambda: self.change_months("backward"), width=19, font='helv36')
         btn_refresh_backward.grid(row=0, column=0, padx=5)
 
         # Center the toolbar frame
-        toolbar.grid_rowconfigure(0, weight=1)
-        toolbar.grid_columnconfigure(0, weight=1)
-        toolbar.grid_columnconfigure(1, weight=1)
-        toolbar.grid_columnconfigure(2, weight=1)
-        toolbar.grid_columnconfigure(3, weight=1)
+        toolbar_btn_month.grid_rowconfigure(0, weight=1)
+        toolbar_btn_month.grid_columnconfigure(0, weight=1)
+        toolbar_btn_month.grid_columnconfigure(1, weight=1)
+        toolbar_btn_month.grid_columnconfigure(2, weight=1)
+        toolbar_btn_month.grid_columnconfigure(3, weight=1)
 
         # =======ВИЗУАЛ БАЗЫ ДАННЫХ =========================================================================
         style = ttk.Style()
@@ -379,15 +368,16 @@ class Main(tk.Frame):
         # Привязываем событие правой кнопки мыши к методу show_menu
         self.tree.bind("<Button-3>", self.menu_errors.show_menu)
 
-        self.scrollbar2 = tk.Scrollbar(self, orient=tk.VERTICAL)
-        self.tree.configure(yscrollcommand=self.scrollbar2.set)
-        self.scrollbar2.config(command=self.tree.yview)
-        self.scrollbar2.pack(side="right", fill="both")
+        y_scrollbar_treeview = tk.Scrollbar(self, orient=tk.VERTICAL)
+        self.tree.configure(yscrollcommand=y_scrollbar_treeview.set)
+        y_scrollbar_treeview.config(command=self.tree.yview)
+        y_scrollbar_treeview.pack(side="right", fill="both")
 
-        self.scrollbar = tk.Scrollbar(self, orient=tk.HORIZONTAL)
-        self.tree.configure(xscrollcommand=self.scrollbar.set)
-        self.scrollbar.config(command=self.tree.xview)
-        self.scrollbar.pack(side="bottom", fill="both")
+        x_scrollbar_treeview = tk.Scrollbar(self, orient=tk.HORIZONTAL)
+        self.tree.configure(xscrollcommand=x_scrollbar_treeview.set)
+        x_scrollbar_treeview.config(command=self.tree.xview)
+        x_scrollbar_treeview.pack(side="bottom", fill="both")
+
         self.tree.pack(side="left", fill="both")
         self.on_select_city()
         self.event_of_button('all')
@@ -432,7 +422,7 @@ class Main(tk.Frame):
                         )
                         self.clipboard_clear()
                         self.clipboard_append(result_str)
-                        connection2.commit()
+                        connection.commit()
                     else:
                         mb.showinfo('Информация', 'Нет данных для выбранного элемента.')
             except mariadb.Error as e:
@@ -442,18 +432,18 @@ class Main(tk.Frame):
 
     def afternoon_statistic(self):
         if self.afternoon_statistic_window is None or not self.afternoon_statistic_window.is_open():
-            self.afternoon_statistic_window = Afternoon_statistic(self, self.db_manager)
+            self.afternoon_statistic_window = Afternoon_statistic(self, self.db_manager, self.enabled.get())
         else:
             self.afternoon_statistic_window.show()
 
     def _on_mousewheel(self, event):
-        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        self.canvas_city.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _on_mousewheel2(self, event):
-        self.canvas2.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        self.canvas_dispetcher.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def on_select_city(self, *args):
-        selected_city = self.city.get()
+        selected_city = self.value_city.get()
 
     def on_select_disp(self, *args):
         selected_disp = self.disp.get()
@@ -478,8 +468,8 @@ class Main(tk.Frame):
 
 #ФУНКЦИЯ ПО ПОЛУЧЕНИЮ ГОРОДА И ДАЛЬНЕЙШЕМУ ПАРСИНГУ АДРЕСОВ В ОКОШКО ПО ГОРОДАМ
     def on_select_city(self, *args):
-        self.selected_city = self.city.get()
-        self.listbox.delete(0, tk.END)
+        self.selected_city = self.value_city.get()
+        self.listbox_addresses.delete(0, tk.END)
         self.listbox_type.delete(0, tk.END)
         try:
             with closing(self.db_manager.connect()) as connection:
@@ -499,7 +489,7 @@ class Main(tk.Frame):
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['улица']}, {d['дом']}, {d['падик']}"
-                    self.listbox.insert(tk.END, self.address_str)
+                    self.listbox_addresses.insert(tk.END, self.address_str)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
@@ -704,7 +694,7 @@ class Main(tk.Frame):
                 if type_button == 'all':
                     self.session.delete("type_button")
                     self.session.set("type_button", "all")
-                    query += ' WHERE z.Причина <> "Линейная"'
+                    query += ' WHERE NOT z.Причина in ("Линейная", "Связь")'
                     query += end
                 elif type_button == 'stopped':
                     self.session.delete("type_button")
@@ -780,31 +770,30 @@ class Main(tk.Frame):
             selected_items = self.tree.selection()
             selected_ids = [self.tree.item(item, 'values')[-1] for item in selected_items]
             selected_id_str = ', '.join([f'"{id}"' for id in selected_ids])
-            conn = pymysql.connect(user=user, password=password, host=host, port=port, database=database)
-            cursor = conn.cursor()
-            sql_query = f'''SELECT z.Номер_заявки,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
-                                   w.ФИО AS Диспетчер,
-                                   g.город AS Город,
-                                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                   Тип_лифта,
-                                   Причина,
-                                   m.ФИО as Механик,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
-                                   Комментарий
-                            FROM {self.zayavki} z
-                            JOIN {self.workers} w ON z.id_диспетчер = w.id
-                            JOIN {self.goroda} g ON z.id_город = g.id
-                            JOIN {self.street} s ON z.id_улица = s.id
-                            JOIN {self.doma} d ON z.id_дом = d.id
-                            JOIN {self.padik} p ON z.id_подъезд = p.id
-                            JOIN {self.workers} m ON z.id_механик = m.id 
-                                    WHERE z.id in ({selected_id_str})'''
-            cursor.execute(sql_query)
-            data = cursor.fetchall()
-            df = pd.DataFrame(data, columns=[i[0] for i in cursor.description])
-            conn.close()
-            Excel(df)
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor()
+                sql_query = f'''SELECT z.Номер_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%y, %H:%i') AS Дата_заявки,
+                                       w.ФИО AS Диспетчер,
+                                       g.город AS Город,
+                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                                       Тип_лифта,
+                                       Причина,
+                                       m.ФИО as Механик,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
+                                       Комментарий
+                                FROM {self.zayavki} z
+                                JOIN {self.workers} w ON z.id_диспетчер = w.id
+                                JOIN {self.goroda} g ON z.id_город = g.id
+                                JOIN {self.street} s ON z.id_улица = s.id
+                                JOIN {self.doma} d ON z.id_дом = d.id
+                                JOIN {self.padik} p ON z.id_подъезд = p.id
+                                JOIN {self.workers} m ON z.id_механик = m.id 
+                                        WHERE z.id in ({selected_id_str})'''
+                cursor.execute(sql_query)
+                data = cursor.fetchall()
+                df = pd.DataFrame(data, columns=[i[0] for i in cursor.description])
+                Excel(df)
         else:
             msg = f"Нужно выделить одну или несколько строк, которые нужно вставить в excel"
             mb.showerror("Ошибка!", msg)
@@ -886,15 +875,15 @@ class Main(tk.Frame):
 
     # ===ОБНОВЛЕНИЕ СТРОК ФИО И АДРЕСОВ В ЛИСТБОКСАХ============================================
     def obnov(self):
-        self.entry3.delete(0, tk.END)
-        self.entry4.delete(0, tk.END)
-        self.entry7.delete(0, tk.END)
+        self.entry_addresses.delete(0, tk.END)
+        self.entry_type_lifts.delete(0, tk.END)
+        self.entry_fio_meh.delete(0, tk.END)
         self.tree.yview_moveto(1)
         self.check_input_address()
         self.check_input_fio()
     # === Парсинг ФИО из списка бд фамилий в listbox ===
     def check_input_fio(self, _event=None):
-        value7 = self.entry7.get().lower()
+        value7 = self.entry_fio_meh.get().lower()
         names = []
         try:
             with closing(self.db_manager.connect()) as connection:
@@ -906,10 +895,10 @@ class Main(tk.Frame):
         for i in self.data_meh:
             names.append(''.join(i['ФИО']))
         if value7 == '':
-            self.listbox_values7.set(names)
+            self.values_listbox_fio_meh.set(names)
         else:
             data7 = [item7 for item7 in names if item7.lower().startswith(value7)]
-            self.listbox_values7.set(data7)
+            self.values_listbox_fio_meh.set(data7)
 
     # === Вставка выбранного ФИО из парсинга в entrybox ===
     def on_change_selection_fio(self, event):
@@ -920,7 +909,7 @@ class Main(tk.Frame):
             for d in self.data_meh:
                 if self.data7 == d['ФИО']:
                     self.selected_meh_id = d['id']
-            self.entry_text7.set(self.data7)
+            self.value_in_entry_fio_meh.set(self.data7)
             self.check_input_fio()
 
     # ===ПАРСИНГ ТИПА ЛИФТОВ ИЗ СПИСКА ЛИФТОВ В ЛИСТБОКС======================
@@ -947,12 +936,12 @@ class Main(tk.Frame):
                     self.listbox_type.insert(tk.END, lift_str)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        if self.entry_text4.get() == '':
+        if self.value_type_lifts.get() == '':
             self.listbox_values_type.set(types)
-            self.entry4.delete(0, tk.END)
+            self.entry_type_lifts.delete(0, tk.END)
         else:
             data2 = [item for item in types if
-                    self.entry_text4.get().lower() in item.lower()]
+                    self.value_type_lifts.get().lower() in item.lower()]
             self.listbox_values_type.set(data2)
 
     # ===ПАРСИНГ АДРЕСОВ ИЗ СПИСКА АДРЕСОВ В ЛИСТБОКС=========================
@@ -978,11 +967,11 @@ class Main(tk.Frame):
                     names.append(address_str)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        if self.entry3.get().lower() == '':
+        if self.entry_addresses.get().lower() == '':
             self.listbox_values.set(names)
-            self.entry4.delete(0, tk.END)
+            self.entry_type_lifts.delete(0, tk.END)
         else:
-            data = [item for item in names if self.entry3.get().lower() in item.lower()]
+            data = [item for item in names if self.entry_addresses.get().lower() in item.lower()]
             self.listbox_values.set(data)
             self.on_change_selection_address
 
@@ -992,7 +981,7 @@ class Main(tk.Frame):
         if self.selection:
             self.index4 = self.selection[0]
             self.data4 = event.widget.get(self.index4)
-            self.entry_text4.set(self.data4)
+            self.value_type_lifts.set(self.data4)
         self.check_input_lifts()
     # ===ВСТАВКА АДРЕСА ИЗ ПАРСИНГА В ЛИСТБОКС=============================
     def on_change_selection_address(self, event):
@@ -1000,7 +989,7 @@ class Main(tk.Frame):
         if self.selection:
             self.index3 = self.selection[0]
             self.data3 = event.widget.get(self.index3)
-            self.entry_text3.set(self.data3)
+            self.value_address.set(self.data3)
             self.check_input_address()
         self.check_input_lifts()
 
@@ -1024,10 +1013,10 @@ class Main(tk.Frame):
 
     # --------------------------------------------------------------
     def select(self):
-        self.type_li = self.entry4.get()
-        self.adress_excel = self.entry_text3.get()
-        self.ala = self.prich5.get()
-        fio_excel = self.entry_text7.get()
+        self.type_li = self.entry_type_lifts.get()
+        self.adress_excel = self.value_address.get()
+        self.ala = self.value_prichina.get()
+        fio_excel = self.value_in_entry_fio_meh.get()
 
 
     def check_lineyki(self, adres_info_lift):
@@ -1039,8 +1028,8 @@ class Main(tk.Frame):
         date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%y, %H:%M")
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
-        val2 = [self.selected_city, self.entry_text3.get(),
-                self.entry_text4.get(), self.prich5.get(), self.entry_text7.get()]
+        val2 = [self.selected_city, self.value_address.get(),
+                self.value_type_lifts.get(), self.value_prichina.get(), self.value_in_entry_fio_meh.get()]
         naz = ['Город', 'Адрес', 'Тип лифта', 'Причина остановки', 'ФИО механика']
         for i in range(len(val2)):
             if len(val2[i]) < 2:
@@ -1057,7 +1046,7 @@ class Main(tk.Frame):
                 number_application = cursor.fetchone()[0]
                 number_application += 1
                 #===========================================
-                data = self.entry_text3.get()
+                data = self.value_address.get()
                 parts = data.split(',')
                 try:
                     with closing(self.db_manager.connect()) as connection:
@@ -1076,7 +1065,7 @@ class Main(tk.Frame):
                         WHERE {self.goroda}.город = "{self.selected_city}" 
                         AND {self.street}.улица = "{parts[0].strip()}" 
                         AND {self.doma}.номер = "{parts[1].strip()}" 
-                        AND {self.padik}.номер = "{parts[2].strip()}" and тип_лифта="{self.entry_text4.get()}";''')
+                        AND {self.padik}.номер = "{parts[2].strip()}" and тип_лифта="{self.value_type_lifts.get()}";''')
                         data_lifts = cursor.fetchall()
                         # if self.check_lineyki(data_lifts):
                         #     print("точно создать заявку?")
@@ -1088,8 +1077,8 @@ class Main(tk.Frame):
                 gorod, street, dom, padik, lift_id = data_lifts[0]
 
                 val = (number_application, unix_time, self.selected_disp_id,
-                       gorod, street, dom, padik, self.entry4.get(),
-                    self.prich5.get(), None, self.selected_meh_id,
+                       gorod, street, dom, padik, self.entry_type_lifts.get(),
+                    self.value_prichina.get(), None, self.selected_meh_id,
                        '', lift_id, self.pc_id)
                 try:
                     with closing(self.db_manager.connect()) as connection:
@@ -1478,6 +1467,14 @@ class Search(tk.Toplevel):
     def __init__(self):
         super().__init__()
         self.db_manager = DataBaseManager()
+        self.tables = self.db_manager.db_tables()
+        self.workers = self.tables['table_workers']
+        self.goroda = self.tables['table_goroda']
+        self.zayavki = self.tables['table_zayavki']
+        self.street = self.tables['table_street']
+        self.doma = self.tables['table_doma']
+        self.padik = self.tables['table_padik']
+        self.lifts = self.tables['table_lifts']
         self.init_search()
         self.view = app
 
@@ -1488,8 +1485,8 @@ class Search(tk.Toplevel):
         self.wm_attributes('-topmost', 1)
         self.bind('<Unmap>', self.on_unmap)
 
-        toolbar4 = tk.Frame(self, borderwidth=1, relief="raised")
-        toolbar4.pack(side=tk.LEFT, fill=tk.Y)
+        toolbar_city = tk.Frame(self, borderwidth=1, relief="raised")
+        toolbar_city.pack(side=tk.LEFT, fill=tk.Y)
 
         try:
             with closing(self.db_manager.connect()) as connection:
@@ -1502,11 +1499,11 @@ class Search(tk.Toplevel):
 
         default_town = data_towns[0] if data_towns else ''
 
-        self.label_city = tk.Label(toolbar4, borderwidth=1, width=21, relief="raised", text="Город", font='Calibri 14 bold')
+        self.label_city = tk.Label(toolbar_city, borderwidth=1, width=21, relief="raised", text="Город", font='Calibri 14 bold')
         self.label_city.pack(side=tk.TOP)
 
-        self.canvas = tk.Canvas(toolbar4, width=100)
-        self.scrollbar = ttk.Scrollbar(toolbar4, orient="vertical", command=self.canvas.yview)
+        self.canvas = tk.Canvas(toolbar_city, width=100)
+        self.scrollbar = ttk.Scrollbar(toolbar_city, orient="vertical", command=self.canvas.yview)
         self.scrollable_frame = ttk.Frame(self.canvas)
 
         self.scrollable_frame.bind(
@@ -1526,21 +1523,21 @@ class Search(tk.Toplevel):
         self.canvas.bind("<Button-4>", self._on_mousewheel)
         self.canvas.bind("<Button-5>", self._on_mousewheel)
 
-        self.city = tk.StringVar(value=default_town['город'] if default_town else '')
-        self.city.trace("w", self.on_select_city)
+        self.value_city = tk.StringVar(value=default_town['город'] if default_town else '')
+        self.value_city.trace("w", self.on_select_city)
 
         for town in data_towns:
             radiobutton = tk.Radiobutton(self.scrollable_frame, font=('Calibri', 14), text=town['город'],
-                                         variable=self.city,
+                                         variable=self.value_city,
                                          value=town['город'])
             radiobutton.pack(anchor="w")
             radiobutton.bind("<MouseWheel>", self._on_mousewheel)
             radiobutton.bind("<Button-4>", self._on_mousewheel)
             radiobutton.bind("<Button-5>", self._on_mousewheel)
 #================================================================================================================
-        toolbar5 = tk.Frame(self, borderwidth=1, relief="raised")
-        toolbar5.pack(side=tk.LEFT, fill=tk.Y)
-        label_adres = tk.Label(toolbar5, borderwidth=1, relief='raised', width=21, text='Адрес', font='Calibri 14 bold')
+        toolbar_addresses = tk.Frame(self, borderwidth=1, relief="raised")
+        toolbar_addresses.pack(side=tk.LEFT, fill=tk.Y)
+        label_adres = tk.Label(toolbar_addresses, borderwidth=1, relief='raised', width=21, text='Адрес', font='Calibri 14 bold')
         label_adres.pack(side=tk.TOP)
 
         toolbar6 = tk.Frame(self, borderwidth=1, relief="raised")
@@ -1560,22 +1557,22 @@ class Search(tk.Toplevel):
 
         self.frame_search = tk.Frame(borderwidth=1)
         self.entry_text_address = tk.StringVar()
-        self.entry_for_address = tk.Entry(toolbar5, textvariable=self.entry_text_address, width=33)
+        self.entry_for_address = tk.Entry(toolbar_addresses, textvariable=self.entry_text_address, width=33)
         self.entry_for_address.bind('<KeyRelease>', self.check_input_address)
         self.entry_for_address.pack()
         self.value_addresses = tk.Variable()
 
         # Создаем горизонтальный скроллбар
-        self.scrollbar_x = tk.Scrollbar(toolbar5, orient=tk.HORIZONTAL)
+        self.scrollbar_x = tk.Scrollbar(toolbar_addresses, orient=tk.HORIZONTAL)
         self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
 
-        self.listbox_addresses = tk.Listbox(toolbar5, listvariable=self.value_addresses, height=15, width=25, font='Calibri 12')
+        self.listbox_addresses = tk.Listbox(toolbar_addresses, listvariable=self.value_addresses, height=15, width=25, font='Calibri 12')
         self.listbox_addresses.bind('<<ListboxSelect>>', self.on_change_selection_11)
         self.listbox_addresses.pack()
         # Связываем скроллбар с Listbox
         self.listbox_addresses.config(xscrollcommand=self.scrollbar_x.set)
         self.scrollbar_x.config(command=self.listbox_addresses.xview)
-        self.selected_city = self.city.get()
+        self.selected_city = self.value_city.get()
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
@@ -1616,7 +1613,7 @@ class Search(tk.Toplevel):
         # Создание и размещение кнопки "Поиск" большого размера слева снизу
         btn_search = ttk.Button(toolbar7, text='Поиск', style="Green.TButton", command=self.destroy, width=20)
         btn_search.pack(side=tk.BOTTOM)  # Установить координаты, ширину и высоту
-        btn_search.bind('<Button-1>', lambda event: (self.view.event_of_button('search', self.city, self.entry_for_address.get(), self.calendar1.get(), self.calendar2.get(), self.destroy())))
+        btn_search.bind('<Button-1>', lambda event: (self.view.event_of_button('search', self.value_city, self.entry_for_address.get(), self.calendar1.get(), self.calendar2.get(), self.destroy())))
 
     def on_unmap(self, event):
         self.deiconify()  # Отменяем сворачивание дочернего окна
@@ -1629,10 +1626,10 @@ class Search(tk.Toplevel):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def on_select_city(self, *args):
-        selected_city = self.city.get()
+        selected_city = self.value_city.get()
 
     def on_select_city(self, *args):
-        self.selected_city = self.city.get()
+        self.selected_city = self.value_city.get()
         # Очистить Listbox перед добавлением новых улиц
         self.listbox_addresses.delete(0, tk.END)
         try:
@@ -1658,7 +1655,7 @@ class Search(tk.Toplevel):
 
         # =========================================================================
     def check_input_address(self, _event=None):
-        self.selected_city = self.city.get()
+        self.selected_city = self.value_city.get()
         changed_address = self.entry_text_address.get().lower()
         names = []
         try:
@@ -1805,3 +1802,5 @@ if __name__ == "__main__":
     root.iconphoto(False, tk.PhotoImage(file='icon.png'))
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
+
+
