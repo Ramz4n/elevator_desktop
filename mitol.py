@@ -20,7 +20,6 @@ class Main(tk.Frame):
         self.afternoon_statistic_window = None
 
 
-
     def main(self):
         with open('config.json', 'r') as file:
             data = json.loads(file.read())
@@ -223,7 +222,7 @@ class Main(tk.Frame):
         frame_fio_meh = tk.Frame()
         self.value_in_entry_fio_meh = tk.StringVar(value='')
         self.entry_fio_meh = tk.Entry(toolbar_fio_meh, textvariable=self.value_in_entry_fio_meh, width=28)
-        self.entry_fio_meh.bind('<KeyRelease>', self.check_input_fio)
+        self.entry_fio_meh.bind('<KeyRelease>', self.parsing_fio_into_listbox)
         label_fio_meh.pack(side=tk.TOP, fill=tk.X)
         self.entry_fio_meh.pack(side=tk.TOP, expand=True, fill=tk.X)
         self.values_listbox_fio_meh = tk.Variable()
@@ -855,8 +854,10 @@ class Main(tk.Frame):
         if callback:
             callback()
 
-    # ===ФУНКЦИЯ КНОПКИ ЧЕРЕЗ КОММЕНТИРОВАНИЯ================================================
     def comment(self, comment, callback):
+        '''
+        Добавление комментария через ПКМ.
+        '''
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor()
@@ -871,18 +872,22 @@ class Main(tk.Frame):
         msg = f"Комментарий добавлен!"
         self.show_temporary_message('Информация', msg)
 
-
-    # ===ОБНОВЛЕНИЕ СТРОК ФИО И АДРЕСОВ В ЛИСТБОКСАХ============================================
     def obnov(self):
+        '''
+        ОБНОВЛЕНИЕ СТРОК ФИО И АДРЕСА И ЛИФТА В ЛИСТБОКСАХ ПОСЛЕ ДОБАВЛЕНИЯ ЗАЯВКИ.
+        '''
         self.entry_addresses.delete(0, tk.END)
         self.entry_type_lifts.delete(0, tk.END)
         self.entry_fio_meh.delete(0, tk.END)
         self.tree.yview_moveto(1)
         self.check_input_address()
-        self.check_input_fio()
-    # === Парсинг ФИО из списка бд фамилий в listbox ===
-    def check_input_fio(self, _event=None):
-        value7 = self.entry_fio_meh.get().lower()
+        self.parsing_fio_into_listbox()
+
+    def parsing_fio_into_listbox(self, _event=None):
+        '''
+        Парсинг ФИО из БД фамилий в listbox.
+        '''
+        selected_fio = self.entry_fio_meh.get().lower()
         names = []
         try:
             with closing(self.db_manager.connect()) as connection:
@@ -893,29 +898,34 @@ class Main(tk.Frame):
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         for i in self.data_meh:
             names.append(''.join(i['ФИО']))
-        if value7 == '':
+        if selected_fio == '':
             self.values_listbox_fio_meh.set(names)
         else:
-            data7 = [item7 for item7 in names if item7.lower().startswith(value7)]
-            self.values_listbox_fio_meh.set(data7)
+            data_fio = [item7 for item7 in names if item7.lower().startswith(selected_fio)]
+            self.values_listbox_fio_meh.set(data_fio)
 
-    # === Вставка выбранного ФИО из парсинга в entrybox ===
     def on_change_selection_fio(self, event):
-        selection7 = event.widget.curselection()
-        if selection7:
-            self.index7 = selection7[0]
-            self.data7 = event.widget.get(self.index7)
-            for d in self.data_meh:
-                if self.data7 == d['ФИО']:
-                    self.selected_meh_id = d['id']
-            self.value_in_entry_fio_meh.set(self.data7)
-            self.check_input_fio()
+        '''
+        Вставка выбранного ФИО из парсинга в строку.
+        '''
+        selection_fio = event.widget.curselection()
+        if selection_fio:
+            selected_index = selection_fio[0]
+            selected_name = event.widget.get(selected_index)
+            for mechanic in self.data_meh:
+                if selected_name == mechanic['ФИО']:
+                    self.selected_meh_id = mechanic['id']
+                    break
+            self.value_in_entry_fio_meh.set(selected_name)
+            self.parsing_fio_into_listbox()
 
-    # ===ПАРСИНГ ТИПА ЛИФТОВ ИЗ СПИСКА ЛИФТОВ В ЛИСТБОКС======================
     def check_input_lifts(self, _event=None):
+        '''
+        ПАРСИНГ ТИПА ЛИФТОВ ИЗ СПИСКА ЛИФТОВ В ЛИСТБОКС.
+        '''
         selected_address = self.data3
         types = []
-        street, house, entrance = selected_address.split(', ')
+        street, home, entrance = selected_address.split(', ')
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
@@ -926,7 +936,7 @@ class Main(tk.Frame):
                                     JOIN {self.street} ON {self.doma}.id_улица = {self.street}.id
                                     JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
                                     WHERE {self.goroda}.город = "{self.selected_city}" AND {self.street}.улица = "{street}"
-                                    and {self.doma}.номер = "{house}" and {self.padik}.номер = "{entrance}" 
+                                    and {self.doma}.номер = "{home}" and {self.padik}.номер = "{entrance}" 
                                     order BY {self.street}.улица, {self.doma}.`номер`, {self.padik}.`номер`''')
                 data_lifts = cursor.fetchall()
                 for lift in data_lifts:
@@ -943,8 +953,10 @@ class Main(tk.Frame):
                     self.value_type_lifts.get().lower() in item.lower()]
             self.listbox_values_type.set(data2)
 
-    # ===ПАРСИНГ АДРЕСОВ ИЗ СПИСКА АДРЕСОВ В ЛИСТБОКС=========================
     def check_input_address(self, _event=None):
+        '''
+        ПАРСИНГ АДРЕСОВ ИЗ СПИСКА АДРЕСОВ В ЛИСТБОКС.
+        '''
         self.listbox_type.delete(0, tk.END)
         names = []
         try:
@@ -974,16 +986,21 @@ class Main(tk.Frame):
             self.listbox_values.set(data)
             self.on_change_selection_address
 
-    # ===ВСТАВКА ЛИФТА ИЗ ПАРСИНГА В ЛИСТБОКС=============================
     def on_change_selection_lift(self, event):
+        '''
+        ВСТАВКА ЛИФТА ИЗ ПАРСИНГА В ЛИСТБОКС.
+        '''
         self.selection = event.widget.curselection()
         if self.selection:
             self.index4 = self.selection[0]
             self.data4 = event.widget.get(self.index4)
             self.value_type_lifts.set(self.data4)
         self.check_input_lifts()
-    # ===ВСТАВКА АДРЕСА ИЗ ПАРСИНГА В ЛИСТБОКС=============================
+
     def on_change_selection_address(self, event):
+        '''
+        ВСТАВКА АДРЕСА ИЗ ПАРСИНГА В ЛИСТБОКС.
+        '''
         self.selection = event.widget.curselection()
         if self.selection:
             self.index3 = self.selection[0]
@@ -991,33 +1008,7 @@ class Main(tk.Frame):
             self.value_address.set(self.data3)
             self.check_input_address()
         self.check_input_lifts()
-
-    # ===ВСТАВКА ГОРОДА ИЗ ПАРСИНГА В ЛИСТБОКС=============================
-    def on_change_selection_town(self, event):
-        self.selection = event.widget.curselection()
-        if self.selection:
-            self.index2 = self.selection[0]
-            self.data2 = event.widget.get(self.index2)
-            self.entry_text2.set(self.data2)
-            self.check_input_town()
-        #self.check_input_lifts()
-
-    def create_combobox(self, combo_text, town):
-        frame = ttk.Frame(borderwidth=1, relief=SOLID, padding=[8, 10])
-        label = ttk.Label(self, text=combo_text)
-        label.pack(anchor=NW)
-        combo = ttk.Combobox(self, values=town)
-        combo.pack(anchor=NW, side=LEFT)
-        return frame
-
     # --------------------------------------------------------------
-    def select(self):
-        self.type_li = self.entry_type_lifts.get()
-        self.adress_excel = self.value_address.get()
-        self.ala = self.value_prichina.get()
-        fio_excel = self.value_in_entry_fio_meh.get()
-
-
     def check_lineyki(self, adres_info_lift):
 
         return False
@@ -1057,77 +1048,97 @@ class Main(tk.Frame):
                 return
         self.sql_insert()
 
+
+    def take_address_from_listbox(self):
+        """
+        Получает id_улицы, id_дома, id_подъезда и id_лифта для дальнейшего заноса этих id в Базу.
+        """
+        parts_of_address = self.value_address.get().split(',')
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor()
+                cursor.execute(f'''SELECT 
+                                {self.goroda}.id AS goroda_id, 
+                                {self.street}.id AS street_id, 
+                                {self.doma}.id AS doma_id, 
+                                {self.padik}.id AS padik_id, 
+                                {self.lifts}.id as id_лифт
+                                FROM {self.lifts}
+                                JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
+                                JOIN {self.doma} ON {self.lifts}.id_дом = {self.doma}.id
+                                JOIN {self.street} ON {self.doma}.id_улица = {self.street}.id
+                                JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
+                                WHERE {self.goroda}.город = "{self.selected_city}" 
+                                AND {self.street}.улица = "{parts_of_address[0].strip()}" 
+                                AND {self.doma}.номер = "{parts_of_address[1].strip()}" 
+                                AND {self.padik}.номер = "{parts_of_address[2].strip()}" and тип_лифта="{self.value_type_lifts.get()}";''')
+                data_id_lift = cursor.fetchall()
+                return data_id_lift
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+
+    def check_last_maxnumber(self):
+        """
+        Проверяет последний номер заявки и добавляет для будущей заявки +1 к номеру.
+        """
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor()
+                cursor.execute(f'''SELECT COALESCE(MAX(Номер_заявки), 0) FROM {self.zayavki}
+                    WHERE DATE_FORMAT(FROM_UNIXTIME(`Дата_заявки`), '%y-%m') = ?''',
+                    ((datetime.datetime.now()).strftime('%y-%m'),))
+                number_application = cursor.fetchone()[0]
+                return number_application + 1
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+
     def sql_insert(self):
+        """
+        Добавляет заявку в БД.
+        Variables:
+        |data_lifts|: берёт значения(id_улица, id_дом, id_подъезд, id_лифт) из функции self.take_address_from_listbox().
+        |number_application|: берёт из функции(self.check_last_maxnumber()) последний номер последней
+                              заявки актуального месяца из БД и делает +1.
+        |self.on_select_disp()|: передаёт id диспетчера в эту функцию.
+        """
+        data_id_lift = self.take_address_from_listbox()
+        number_application = self.check_last_maxnumber()
         self.on_select_disp()
         date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%y, %H:%M")
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
+
+        town, street, home, entrance, lift_id = data_id_lift[0]
+
+        values = (number_application, unix_time, self.selected_disp_id,
+               town, street, home, entrance, self.entry_type_lifts.get(),
+            self.value_prichina.get(), None, self.selected_meh_id,
+               '', lift_id, self.pc_id)
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor()
-                cursor.execute(f"SELECT COALESCE(MAX(Номер_заявки), 0) FROM {self.zayavki} "
-                               f"WHERE DATE_FORMAT(FROM_UNIXTIME(""Дата_заявки), '%y-%m') = ?",
-                    ((datetime.datetime.now()).strftime('%y-%m'),))
-                number_application = cursor.fetchone()[0]
-                number_application += 1
-                #===========================================
-                parts = self.value_address.get().split(',')
-                try:
-                    with closing(self.db_manager.connect()) as connection:
-                        cursor = connection.cursor()
-                        cursor.execute(f'''SELECT 
-                        {self.goroda}.id AS goroda_id, 
-                        {self.street}.id AS street_id, 
-                        {self.doma}.id AS doma_id, 
-                        {self.padik}.id AS padik_id, 
-                        {self.lifts}.id as id_лифт
-                        FROM {self.lifts}
-                        JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
-                        JOIN {self.doma} ON {self.lifts}.id_дом = {self.doma}.id
-                        JOIN {self.street} ON {self.doma}.id_улица = {self.street}.id
-                        JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
-                        WHERE {self.goroda}.город = "{self.selected_city}" 
-                        AND {self.street}.улица = "{parts[0].strip()}" 
-                        AND {self.doma}.номер = "{parts[1].strip()}" 
-                        AND {self.padik}.номер = "{parts[2].strip()}" and тип_лифта="{self.value_type_lifts.get()}";''')
-                        data_lifts = cursor.fetchall()
-                except mariadb.Error as e:
-                    showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-
-                gorod, street, dom, padik, lift_id = data_lifts[0]
-
-                val = (number_application, unix_time, self.selected_disp_id,
-                       gorod, street, dom, padik, self.entry_type_lifts.get(),
-                    self.value_prichina.get(), None, self.selected_meh_id,
-                       '', lift_id, self.pc_id)
-                try:
-                    with closing(self.db_manager.connect()) as connection:
-                        cursor = connection.cursor()
-                        cursor.execute(f'''INSERT INTO {self.zayavki} (
-                                        Номер_заявки,
-                                        Дата_заявки,
-                                        id_Диспетчер,
-                                        id_город,
-                                        id_улица,
-                                        id_дом,
-                                        id_подъезд,
-                                        тип_лифта,
-                                        Причина,
-                                        Дата_запуска,
-                                        id_Механик,
-                                        Комментарий,
-                                        id_Лифт,
-                                        pc_id) 
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',(val))
-                        connection.commit()
-                    #Telegram_sendler(self.db_config, val)
-                except mariadb.Error as e:
-                    showinfo('Информация', f"Ошибка при работе с базой данных123: {e}")
+                cursor.execute(f'''INSERT INTO {self.zayavki} (
+                                Номер_заявки,
+                                Дата_заявки,
+                                id_Диспетчер,
+                                id_город,
+                                id_улица,
+                                id_дом,
+                                id_подъезд,
+                                тип_лифта,
+                                Причина,
+                                Дата_запуска,
+                                id_Механик,
+                                Комментарий,
+                                id_Лифт,
+                                pc_id) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',(values))
+                connection.commit()
         except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+            showinfo('Информация', f"Ошибка при работе с базой данных123: {e}")
+
         msg = f"Запись успешно добавлена! Её порядковый номер - {number_application}"
         self.show_temporary_message('Информация', msg)
-        # mb.showinfo("Информация", msg)
         self.event_of_button(f"{self.session.get('type_button')}")
         self.obnov()
 
