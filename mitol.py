@@ -16,12 +16,12 @@ class Main(tk.Frame):
         self.doma = self.tables['table_doma']
         self.padik = self.tables['table_padik']
         self.lifts = self.tables['table_lifts']
-        self.init_main()
+        self.main()
         self.afternoon_statistic_window = None
 
 
 
-    def init_main(self):
+    def main(self):
         with open('config.json', 'r') as file:
             data = json.loads(file.read())
 
@@ -264,7 +264,7 @@ class Main(tk.Frame):
         helv36 = tkFont.Font(family='Helvetica', size=10, weight=tkFont.BOLD)
         general_tool_button = tk.Frame(toolbar_general, borderwidth=1, relief="raised")
         general_tool_button.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
-        btn_open_dialog = tk.Button(general_tool_button, text='Добавить заявку', command=self.sql_insert, bg='#d7d8e0', compound=tk.LEFT, width=19, height=1, font=helv36)
+        btn_open_dialog = tk.Button(general_tool_button, text='Добавить заявку', command=self.check_values_from_listboxes, bg='#d7d8e0', compound=tk.LEFT, width=19, height=1, font=helv36)
         btn_open_dialog.pack(side=tk.TOP)
         btn_refresh = tk.Button(general_tool_button, text='Обновить', bg='#d7d8e0', compound=tk.TOP, command=lambda: self.event_of_button('all'), width=19, font=helv36)
         btn_refresh.pack(side=tk.TOP)
@@ -469,8 +469,7 @@ class Main(tk.Frame):
 #ФУНКЦИЯ ПО ПОЛУЧЕНИЮ ГОРОДА И ДАЛЬНЕЙШЕМУ ПАРСИНГУ АДРЕСОВ В ОКОШКО ПО ГОРОДАМ
     def on_select_city(self, *args):
         self.selected_city = self.value_city.get()
-        self.listbox_addresses.delete(0, tk.END)
-        self.listbox_type.delete(0, tk.END)
+        self.obnov()
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
@@ -559,7 +558,7 @@ class Main(tk.Frame):
             return
         self.event_of_button(f'{self.session.get("type_button")}')
         msg = f"Время отмечено!"
-        mb.showinfo("Информация", msg)
+        self.show_temporary_message('Информация', msg)
 
     # ===УДАЛЕНИЕ СТРОКИ=====================================================================
     def delete(self, event):
@@ -604,7 +603,7 @@ class Main(tk.Frame):
             return
         self.event_of_button(f'{self.session.get("type_button")}')
         msg = f"Запись отредактирована!"
-        mb.showinfo("Информация", msg)
+        self.show_temporary_message('Информация', msg)
 
     # ===ОТМЕТИТЬ ОШИБКУ==============================================================================
     def error(self, event):
@@ -622,7 +621,7 @@ class Main(tk.Frame):
             return
         self.event_of_button(f'{self.session.get("type_button")}')
         msg = f"Запись отредактирована!"
-        mb.showinfo("Информация", msg)
+        self.show_temporary_message('Информация', msg)
 
     # ===ФУНКЦИЯ КОММЕНТИРОВАНИЯ==================================================
     def open_comment(self, event):
@@ -800,7 +799,7 @@ class Main(tk.Frame):
 
     # ===РЕДАКТИРОВАНИЕ ДАННЫХ В БД===================================================================
     def update_record(self, data, dispetcher, town, street, house, padik, type_lift, prichina, fio_meh, date_to_go, comment, callback):
-        self.session.get("type_button")
+        # self.session.get("type_button")
         try:
             date_object = datetime.datetime.strptime(data, time_format)
             if date_to_go == None or date_to_go == '':
@@ -852,7 +851,7 @@ class Main(tk.Frame):
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.event_of_button(f'{self.session.get("type_button")}')
         msg = f"Запись отредактирована!"
-        mb.showinfo("Информация", msg)
+        self.show_temporary_message('Информация', msg)
         if callback:
             callback()
 
@@ -870,7 +869,7 @@ class Main(tk.Frame):
         if callback:
             callback()
         msg = f"Комментарий добавлен!"
-        mb.showinfo("Информация", msg)
+        self.show_temporary_message('Информация', msg)
 
 
     # ===ОБНОВЛЕНИЕ СТРОК ФИО И АДРЕСОВ В ЛИСТБОКСАХ============================================
@@ -1023,20 +1022,46 @@ class Main(tk.Frame):
 
         return False
 
+    def check_values_from_listboxes(self):
+        """
+    Проверяет значения, введенные пользователем в интерфейсе, после нажатия на кнопку "Добавить заявку".
+    Эта функция выполняет проверку данных, введенных пользователем, и вызывает метод для вставки данных в базу данных, если все данные корректны.
+    Args:
+        self: Экземпляр класса, в котором определена эта функция.
+    Process:
+        1. Собирает данные из полей ввода: город, адрес, тип лифта, причина остановки и ФИО механика.
+        2. Проверяет длину каждого значения. Если длина меньше 2 символов, выводит сообщение об ошибке.
+        3. Если все значения корректны, вызывает метод `sql_insert()` для добавления заявки в базу данных.
+    Used Methods:
+        - self.value_city.get(): Получает значение из поля ввода города.
+        - self.value_address.get(): Получает значение из поля ввода адреса.
+        - self.value_type_lifts.get(): Получает значение из поля ввода типа лифта.
+        - self.value_prichina.get(): Получает значение из поля ввода причины остановки.
+        - self.value_in_entry_fio_meh.get(): Получает значение из поля ввода ФИО механика.
+        - mb.showerror(): Выводит диалоговое окно с сообщением об ошибке.
+        - self.sql_insert(): Выполняет вставку данных в базу данных.
+    Note:
+        - Функция предполагает, что все необходимые методы и атрибуты определены в классе, к которому она принадлежит.
+        - Используется для валидации данных перед их сохранением в базу данных.
+        """
+
+        data_string_values = {'Город': self.value_city.get(),
+                              'Адрес': self.value_address.get(),
+                              'Тип лифта': self.value_type_lifts.get(),
+                              'Причина остановки': self.value_prichina.get(),
+                              'ФИО механика': self.value_in_entry_fio_meh.get()}
+
+        for key, value in data_string_values.items():
+            if len(data_string_values[key]) < 2:
+                mb.showerror("Ошибка", f"Введите данные в строке: {key}")
+                return
+        self.sql_insert()
+
     def sql_insert(self):
         self.on_select_disp()
         date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%y, %H:%M")
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
-        val2 = [self.selected_city, self.value_address.get(),
-                self.value_type_lifts.get(), self.value_prichina.get(), self.value_in_entry_fio_meh.get()]
-        naz = ['Город', 'Адрес', 'Тип лифта', 'Причина остановки', 'ФИО механика']
-        for i in range(len(val2)):
-            if len(val2[i]) < 2:
-                mb.showerror(
-                    "Ошибка",
-                    f"Введите данные в строке: {naz[i]}")
-                return
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor()
@@ -1046,8 +1071,7 @@ class Main(tk.Frame):
                 number_application = cursor.fetchone()[0]
                 number_application += 1
                 #===========================================
-                data = self.value_address.get()
-                parts = data.split(',')
+                parts = self.value_address.get().split(',')
                 try:
                     with closing(self.db_manager.connect()) as connection:
                         cursor = connection.cursor()
@@ -1067,10 +1091,6 @@ class Main(tk.Frame):
                         AND {self.doma}.номер = "{parts[1].strip()}" 
                         AND {self.padik}.номер = "{parts[2].strip()}" and тип_лифта="{self.value_type_lifts.get()}";''')
                         data_lifts = cursor.fetchall()
-                        # if self.check_lineyki(data_lifts):
-                        #     print("точно создать заявку?")
-                        # else:
-                        #     print('создаём заявку')
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
@@ -1106,9 +1126,84 @@ class Main(tk.Frame):
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         msg = f"Запись успешно добавлена! Её порядковый номер - {number_application}"
-        mb.showinfo("Информация", msg)
+        self.show_temporary_message('Информация', msg)
+        # mb.showinfo("Информация", msg)
         self.event_of_button(f"{self.session.get('type_button')}")
         self.obnov()
+
+    def show_temporary_message(self, title, message, duration=3000, fade_duration=1000):
+        """
+        Показывает всплывающее окно с сообщением, которое затухает и закрывается через заданное время.
+        Args:
+        |title|: Заголовок окна.
+        |message|: Сообщение для отображения.
+        |duration|: Время в миллисекундах, через которое начнется затухание (по умолчанию 3000 мс = 3 секунды).
+        |fade_duration|: Время затухания в миллисекундах (по умолчанию 1000 мс = 1 секунда).
+        """
+        # Создаем новое окно для сообщения
+        message_window = tk.Toplevel()
+        message_window.title(title)
+
+        # Убираем стандартную верхнюю панель
+        message_window.overrideredirect(True)
+
+        # Устанавливаем цвет фона окна
+        message_window.configure(bg='lightyellow')
+
+        # Создаем собственную панель заголовка
+        title_bar = tk.Frame(message_window, bg='darkblue', relief='raised', bd=2)
+        title_bar.pack(fill=tk.X)
+
+        # Устанавливаем шрифт
+        title_font = tkfont.Font(family="Helvetica", size=14, weight="bold")
+        message_font = tkfont.Font(family="Helvetica", size=12, weight="bold")
+
+        # Добавляем заголовок в панель
+        title_label = tk.Label(title_bar, text=title, bg='darkblue', fg='white', font=title_font)
+        title_label.pack(side=tk.LEFT, padx=5, pady=5)
+
+        # Добавляем кнопку закрытия
+        close_button = tk.Button(title_bar, text='×', bg='darkblue', fg='white', font=title_font,
+                                 command=message_window.destroy)
+        close_button.pack(side=tk.RIGHT, padx=5, pady=5)
+
+        # Устанавливаем сообщение в окне
+        label = tk.Label(message_window, text=message, bg='lightyellow', fg='darkblue', font=message_font)
+        label.pack(pady=20, padx=20)
+
+        # Обновляем окно, чтобы получить точные размеры
+        message_window.update_idletasks()
+
+        # Получаем размеры экрана
+        screen_width = message_window.winfo_screenwidth()
+        screen_height = message_window.winfo_screenheight()
+
+        # Получаем фактические размеры окна
+        window_width = message_window.winfo_width()
+        window_height = message_window.winfo_height()
+
+        # Вычисляем координаты для размещения окна по центру
+        x = (screen_width // 2) - (window_width // 2)
+        y = (screen_height // 2) - (window_height // 2)
+
+        # Устанавливаем позицию окна
+        message_window.geometry(f'+{x}+{y}')
+
+        # Устанавливаем прозрачность окна
+        message_window.attributes("-alpha", 1.0)
+
+        def fade_out():
+            # Уменьшаем прозрачность окна до полного исчезновения
+            alpha = message_window.attributes("-alpha")
+            if alpha > 0:
+                alpha -= 0.05
+                message_window.attributes("-alpha", alpha)
+                message_window.after(fade_duration // 20, fade_out)
+            else:
+                message_window.destroy()
+
+        # Запускаем затухание через заданное время
+        message_window.after(duration, fade_out)
 
     # ======ФУНКЦИЯ СПРОСА О ЗАКРЫТИИ ПРОГРАММЫ=================================================
     def on_closing(self):
@@ -1252,7 +1347,7 @@ class Edit(tk.Toplevel):
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.town_to_id = {i['город']: i['id'] for i in data_towns}
-        # Получение списка ФИО диспетчеров
+
         town_d = [i['город'] for i in data_towns]
         g1 = [j for j in town_d]
         g1.insert(0, self.rows[0]['Город'])
@@ -1261,33 +1356,8 @@ class Edit(tk.Toplevel):
         self.combobox_town.place(x=200, y=110)
         self.combobox_town.bind("<<ComboboxSelected>>", self.on_town_select)
 #=============================================================================================
-        try:
-            with closing(self.db_manager.connect()) as connection:
-                cursor = connection.cursor(dictionary=True)
-                cursor.execute(f'''SELECT
-                                    {self.goroda}.id as goroda_id,
-                                    {self.goroda}.город,
-                                    CONCAT({self.street}.улица, ', ', {self.doma}.номер, ', ', {self.padik}.номер) as Адрес,
-                                    {self.street}.id as street_id,
-                                    {self.street}.улица as улица,
-                                    {self.doma}.id as doma_id,
-                                    {self.doma}.номер as дом,
-                                    {self.padik}.id as padik_id,
-                                    {self.padik}.номер as подъезд
-                                FROM {self.goroda}
-                                JOIN {self.street} ON {self.goroda}.id = {self.street}.id_город
-                                JOIN {self.doma} ON {self.street}.id = {self.doma}.id_улица
-                                JOIN {self.lifts} ON {self.doma}.id = {self.lifts}.id_дом
-                                JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
-                                WHERE {self.goroda}.город = '{self.combobox_town.get()}'
-                                group BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`
-                                ORDER BY {self.street}.улица, {self.doma}.номер, {self.padik}.номер;''')
-                self.adreses = cursor.fetchall()
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.street_to_id = {i['улица']: i['street_id'] for i in self.adreses}
-        self.house_to_id = {i['дом']: i['doma_id'] for i in self.adreses}
-        self.padik_to_id = {i['подъезд']: i['padik_id'] for i in self.adreses}
+        self.get_addresses_after_change_town(self.combobox_town.get())
+
         adres_list = [i['Адрес'] for i in self.adreses]
         self.selected_address = tk.StringVar(value=self.rows[0]['Адрес'])
         self.address_combobox = ttk.Combobox(self, textvariable=self.selected_address, font=font10, width=30, state='readonly')
@@ -1300,7 +1370,6 @@ class Edit(tk.Toplevel):
 #=============================================================================================
         self.selected_type = tk.StringVar(value=self.rows[0]['тип_лифта'])
         self.combobox_lift = ttk.Combobox(self, textvariable=self.selected_type, font=font10, state='readonly')
-        self.street_name, self.house, self.entrance = self.address_combobox.get().split(', ')
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
@@ -1356,8 +1425,44 @@ class Edit(tk.Toplevel):
         self.btn_ok = ttk.Button(self, text='Сохранить', command=self.save_and_close)
         self.btn_ok.place(x=200, y=350)
 
+    def get_addresses_after_change_town(self, town):
+        """
+        Поиск адресов заданного города.
+        |town|: аргумент - заданный город.
+        |type town|: str.
+        |return|: Вывод словарей: self.street_to_id, self.house_to_id, self.padik_to_id.
+        |rtype|: dict.
+        """
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f'''SELECT
+                                    {self.goroda}.id as goroda_id,
+                                    {self.goroda}.город,
+                                    CONCAT({self.street}.улица, ', ', {self.doma}.номер, ', ', {self.padik}.номер) as Адрес,
+                                    {self.street}.id as street_id,
+                                    {self.street}.улица as улица,
+                                    {self.doma}.id as doma_id,
+                                    {self.doma}.номер as дом,
+                                    {self.padik}.id as padik_id,
+                                    {self.padik}.номер as подъезд
+                                FROM {self.goroda}
+                                JOIN {self.street} ON {self.goroda}.id = {self.street}.id_город
+                                JOIN {self.doma} ON {self.street}.id = {self.doma}.id_улица
+                                JOIN {self.lifts} ON {self.doma}.id = {self.lifts}.id_дом
+                                JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
+                                WHERE {self.goroda}.город = '{town}'
+                                group BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`
+                                ORDER BY {self.street}.улица, {self.doma}.номер, {self.padik}.номер;''')
+                self.adreses = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+        self.street_to_id = {i['улица']: i['street_id'] for i in self.adreses}
+        self.house_to_id = {i['дом']: i['doma_id'] for i in self.adreses}
+        self.padik_to_id = {i['подъезд']: i['padik_id'] for i in self.adreses}
     def on_unmap(self, event):
-        self.deiconify()  # Отменяем сворачивание дочернего окна
+        # Отменяем сворачивание дочернего окна
+        self.deiconify()
 
     def deiconify(self):
         if self.state() == 'iconic':
@@ -1425,7 +1530,7 @@ class Edit(tk.Toplevel):
         if self.address_combobox.get() == 'ВЫБРАТЬ АДРЕС':
             return self.address_combobox.get()
         else:
-
+            self.get_addresses_after_change_town(self.combobox_town.get())
             street, house, padik = self.address_combobox.get().split(',')
             selected_street_id = self.street_to_id.get(street)
             selected_house_id = self.house_to_id.get(house.strip())

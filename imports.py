@@ -25,3 +25,4 @@ from telegram import Bot
 from session import Session
 from change_months import Change_months
 from db_manager import DataBaseManager
+from tkinter import font as tkfont
