@@ -740,9 +740,7 @@ class Main(tk.Frame):
 
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
-                    formatted_row = [
-                        value if value is not None else ""
-                        for value in row]
+                    formatted_row = [value if value is not None else "" for value in row]
 
                     if formatted_row[-3] == "" and formatted_row[-5] == 'Остановлен':
                         self.tree.insert('', 'end', values=tuple(formatted_row), tags=('Red.Treeview',))
@@ -1367,7 +1365,7 @@ class Edit(tk.Toplevel):
         self.combobox_town.place(x=200, y=110)
         self.combobox_town.bind("<<ComboboxSelected>>", self.on_town_select)
 #=============================================================================================
-        self.get_addresses_after_change_town(self.combobox_town.get())
+        self.get_street_after_change_town(self.combobox_town.get())
 
         adres_list = [i['Адрес'] for i in self.adreses]
         self.selected_address = tk.StringVar(value=self.rows[0]['Адрес'])
@@ -1436,7 +1434,7 @@ class Edit(tk.Toplevel):
         self.btn_ok = ttk.Button(self, text='Сохранить', command=self.save_and_close)
         self.btn_ok.place(x=200, y=350)
 
-    def get_addresses_after_change_town(self, town):
+    def get_street_after_change_town(self, town, street=None, home=None, entrance=None, elevator=None):
         """
         Поиск адресов заданного города.
         |town|: аргумент - заданный город.
@@ -1462,15 +1460,16 @@ class Edit(tk.Toplevel):
                                 JOIN {self.doma} ON {self.street}.id = {self.doma}.id_улица
                                 JOIN {self.lifts} ON {self.doma}.id = {self.lifts}.id_дом
                                 JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
-                                WHERE {self.goroda}.город = '{town}'
-                                group BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`
-                                ORDER BY {self.street}.улица, {self.doma}.номер, {self.padik}.номер;''')
+                                WHERE {self.goroda}.город = '{town}';''')
                 self.adreses = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.street_to_id = {i['улица']: i['street_id'] for i in self.adreses}
         self.house_to_id = {i['дом']: i['doma_id'] for i in self.adreses}
         self.padik_to_id = {i['подъезд']: i['padik_id'] for i in self.adreses}
+
+    def get_home_after_change_street(self):
+        pass
     def on_unmap(self, event):
         # Отменяем сворачивание дочернего окна
         self.deiconify()
@@ -1541,12 +1540,42 @@ class Edit(tk.Toplevel):
         if self.address_combobox.get() == 'ВЫБРАТЬ АДРЕС':
             return self.address_combobox.get()
         else:
-            self.get_addresses_after_change_town(self.combobox_town.get())
-            street, house, padik = self.address_combobox.get().split(',')
-            selected_street_id = self.street_to_id.get(street)
-            selected_house_id = self.house_to_id.get(house.strip())
-            selected_padik_id = self.padik_to_id.get(padik.strip())
-            return selected_street_id, selected_house_id, selected_padik_id
+            self.get_street_after_change_town(self.combobox_town.get())
+            town_name = self.combobox_town.get()
+            street_name, home_name, padik_name = self.address_combobox.get().split(',')
+            lift_name = self.combobox_lift.get()
+            all_id_address = self.get_all_id_address(town_name.strip(), street_name.strip(), home_name.strip(),
+                                                     padik_name.strip(), lift_name.strip())
+
+            # selected_street_id = self.street_to_id.get(street)
+            # selected_house_id = self.house_to_id.get(house.strip())
+            # selected_padik_id = self.padik_to_id.get(padik.strip())
+            return all_id_address
+
+    def get_all_id_address(self, town, street, home, entrance, lift):
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f'''SELECT 
+                      goroda.id AS goroda_id,
+                      street.id AS street_id,
+                      doma.id AS home_id,
+                      padik.id AS padik_id,
+                      lifts.id AS lifts_id
+                      FROM goroda
+                      JOIN street ON goroda.id = street.id_город
+                      JOIN doma ON street.id = doma.id_улица
+                      JOIN lifts ON doma.id = lifts.id_дом
+                      JOIN padik ON lifts.id_подъезд = padik.id
+                      WHERE goroda.город = ? AND street.`Улица`= ?
+                      AND doma.`Номер`= ? AND padik.`Номер`= ? AND lifts.`Тип_лифта`= ?
+                    ''', (town, street, home, entrance, lift),)
+                data_all_id_address = cursor.fetchall()
+            return data_all_id_address
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+
+
 
     def get_selected_meh_id(self):
         selected_meh_fio = self.combobox_meh.get()
@@ -1568,16 +1597,15 @@ class Edit(tk.Toplevel):
         self.view.update_record(
             self.calen1.get(),
             self.get_selected_dispetcher_id(),
-            self.get_selected_town_id(),
             self.get_selected_adres_id()[0],
+            self.get_selected_adres_id()[4],
             self.get_selected_adres_id()[1],
+            self.get_selected_adres_id()[3],
             self.get_selected_adres_id()[2],
-            self.combobox_lift.get(),
             self.combobox_stop.get(),
             self.get_selected_meh_id(),
             self.calen2.get(),
             self.entry_comment.get(), self.destroy())
-
 
 class Search(tk.Toplevel):
     def __init__(self):
@@ -1915,7 +1943,7 @@ if __name__ == "__main__":
     app.pack()
     root.title("Электронный журнал")
     root.geometry("1920x1080")
-    root.iconphoto(False, tk.PhotoImage(file='icon.png'))
+    # root.iconphoto(False, tk.PhotoImage(file='icon.png'))
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
 
