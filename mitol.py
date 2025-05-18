@@ -967,7 +967,7 @@ class Main(tk.Frame):
                         JOIN {self.lifts} ON {self.doma}.id = {self.lifts}.id_дом
                         JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
                         JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
-                        WHERE {self.goroda}.Город = '{self.selected_city}'
+                        WHERE {self.goroda}.Город = '{self.selected_city}' AND {self.doma}.is_active = 1
                         group BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`
 						ORDER BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`''')
                 data_streets = cursor.fetchall()
@@ -1787,7 +1787,7 @@ class Search(tk.Toplevel):
                         JOIN {self.lifts} ON {self.doma}.id = {self.lifts}.id_дом
                         JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
                         JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
-                        WHERE {self.goroda}.Город = '{self.selected_city}'
+                        WHERE {self.goroda}.Город = '{self.selected_city}' AND {self.doma}.is_active = 1
                         group BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`
 						ORDER BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`''')
                 self.data_streets = cursor.fetchall()
