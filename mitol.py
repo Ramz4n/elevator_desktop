@@ -303,6 +303,9 @@ class Main(tk.Frame):
                        "Май", "Июнь", "Июль", "Август",
                        "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
 
+        # self.entry = tk.Entry(toolbar_btn_month, width=20, font=('Helvetica', 14))
+        # self.entry.pack(side=tk.TOP, anchor=tk.W)
+
         toolbar_btn_month = tk.Frame(root)
         toolbar_btn_month.pack(pady=10)
 
@@ -1014,7 +1017,8 @@ class Main(tk.Frame):
     def check_values_from_listboxes(self):
         """
     Проверяет значения, введенные пользователем в интерфейсе, после нажатия на кнопку "Добавить заявку".
-    Эта функция выполняет проверку данных, введенных пользователем, и вызывает метод для вставки данных в базу данных, если все данные корректны.
+    Эта функция выполняет проверку данных, введенных пользователем,
+    и вызывает метод для вставки данных в базу данных, если все данные корректны.
     Args:
         self: Экземпляр класса, в котором определена эта функция.
     Process:
@@ -1044,7 +1048,42 @@ class Main(tk.Frame):
             if len(data_string_values[key]) < 2:
                 mb.showerror("Ошибка", f"Введите данные в строке: {key}")
                 return
-        self.sql_insert()
+        self.check_similar_info_into_bd(data_string_values)
+
+    def check_similar_info_into_bd(self, data_string_values):
+        """
+    В эту функцию поступают данные заявки, которую только что ввёл диспетчер.
+    После получения данных, делается запрос в БД и проверяется, есть ли такая же заявка в БД.
+    Args:
+        data_string_values: информация(заявка) введённая диспетчером.
+    Process:
+        1. Пступают данные 'data_string_values'.
+        2. Делается запрос в БД.
+        3. Создается переменная 'check_info', которая принимает в себя данные из БД.
+        4. Проверяется условие, если данные в переменной 'check_info' есть, значит длина будет > 1, значит такая
+        заявка есть -> вывести ошибку. Иначе запустить функцию self.sql_insert().
+        """
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor()
+                query = self.query()
+                end = f''' WHERE g.город = "{data_string_values['Город']}"
+                            AND s.улица = "{data_string_values['Адрес'].split(',')[0].strip()}"
+                            AND d.номер = "{data_string_values['Адрес'].split(',')[1].strip()}"
+                            AND p.номер = "{data_string_values['Адрес'].split(',')[2].strip()}"
+                            AND z.тип_лифта = "{data_string_values['Тип лифта']}"
+                            AND z.причина = "{data_string_values['Причина остановки']}"
+                            AND z.дата_запуска IS NULL AND pc_id is not NULL'''
+                query += end
+                cursor.execute(query)
+                check_info = cursor.fetchall()
+                if len(check_info) < 1:
+                    self.sql_insert()
+                else:
+                    mb.showerror("Ошибка", f"Такая заявка уже существует! Её номер №{check_info[0][0]} от {check_info[0][1]}")
+                    self.obnov()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
 
     def take_address_from_listbox(self):
@@ -1544,13 +1583,13 @@ class Edit(tk.Toplevel):
             town_name = self.combobox_town.get()
             street_name, home_name, padik_name = self.address_combobox.get().split(',')
             lift_name = self.combobox_lift.get()
-            all_id_address = self.get_all_id_address(town_name.strip(), street_name.strip(), home_name.strip(),
+            self.all_id_address = self.get_all_id_address(town_name.strip(), street_name.strip(), home_name.strip(),
                                                      padik_name.strip(), lift_name.strip())
 
             # selected_street_id = self.street_to_id.get(street)
             # selected_house_id = self.house_to_id.get(house.strip())
             # selected_padik_id = self.padik_to_id.get(padik.strip())
-            return all_id_address
+            return self.all_id_address
 
     def get_all_id_address(self, town, street, home, entrance, lift):
         try:
@@ -1593,15 +1632,15 @@ class Edit(tk.Toplevel):
             mb.showerror("Ошибка", "Вы не выбрали ФИО механика")
             self.grab_release()  # Разрешаем доступ к другим окнам
             return
-
         self.view.update_record(
             self.calen1.get(),
             self.get_selected_dispetcher_id(),
-            self.get_selected_adres_id()[0],
-            self.get_selected_adres_id()[4],
-            self.get_selected_adres_id()[1],
-            self.get_selected_adres_id()[3],
-            self.get_selected_adres_id()[2],
+            self.all_id_address[0]['goroda_id'],
+            self.all_id_address[0]['street_id'],
+            self.all_id_address[0]['home_id'],
+            self.all_id_address[0]['padik_id'],
+            self.combobox_lift.get(),
+            # self.all_id_address[0]['lifts_id'],
             self.combobox_stop.get(),
             self.get_selected_meh_id(),
             self.calen2.get(),
