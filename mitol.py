@@ -209,7 +209,7 @@ class Main(tk.Frame):
         frame_prichina = tk.Frame()
         label_prichina = tk.Label(toolbar_prichina, borderwidth=1, width=14, relief="raised", text="Причина", font='Calibri 16 bold')
         label_prichina.pack(fill=tk.X)
-        self.list_prichina = ['Неисправность', 'Застревание', 'Остановлен', 'Связь', 'Линейная']
+        self.list_prichina = ['Неисправность', 'Застревание', 'Остановлен', 'Связь', 'Линейная', 'Т.О.']
         self.value_prichina = tk.StringVar(value='?')
         for pr in self.list_prichina:
             btn_prichina = tk.Radiobutton(toolbar_prichina, text=pr, value=pr, variable=self.value_prichina, font='Calibri  16')
@@ -303,32 +303,35 @@ class Main(tk.Frame):
                        "Май", "Июнь", "Июль", "Август",
                        "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
 
-        # self.entry = tk.Entry(toolbar_btn_month, width=20, font=('Helvetica', 14))
-        # self.entry.pack(side=tk.TOP, anchor=tk.W)
-
         toolbar_btn_month = tk.Frame(root)
-        toolbar_btn_month.pack(pady=10)
+        toolbar_btn_month.pack(fill='x', pady=10)
 
-        btn_refresh_forward = tk.Button(toolbar_btn_month, text='Следующий месяц', bg='#d7d8e0', compound=tk.CENTER,
-                                        command=lambda: self.change_months("forward"), width=19, font='helv36')
-        btn_refresh_forward.grid(row=0, column=3, padx=5)
+        # Слева: entry
+        self.entry = tk.Entry(toolbar_btn_month, width=20, font=('Helvetica', 14))
+        self.entry.pack(side='left', padx=10)
 
-        self.year_label = Label(toolbar_btn_month, text='', font='Calibri 16 bold')
-        self.year_label.grid(row=0, column=2, padx=5)
+        # Центр: отдельный фрейм для кнопок и меток
+        center_frame = tk.Frame(toolbar_btn_month)
+        center_frame.pack(side='left', expand=True)
 
-        self.month_label = Label(toolbar_btn_month, text='', font='Calibri 16 bold')
-        self.month_label.grid(row=0, column=1, padx=5)
-
-        btn_refresh_backward = tk.Button(toolbar_btn_month, text='Предыдущий месяц', bg='#d7d8e0', compound=tk.CENTER,
+        # Кнопка "Предыдущий месяц"
+        btn_refresh_backward = tk.Button(center_frame, text='Предыдущий месяц', bg='#d7d8e0', compound=tk.CENTER,
                                          command=lambda: self.change_months("backward"), width=19, font='helv36')
         btn_refresh_backward.grid(row=0, column=0, padx=5)
 
-        # Center the toolbar frame
-        toolbar_btn_month.grid_rowconfigure(0, weight=1)
-        toolbar_btn_month.grid_columnconfigure(0, weight=1)
-        toolbar_btn_month.grid_columnconfigure(1, weight=1)
-        toolbar_btn_month.grid_columnconfigure(2, weight=1)
-        toolbar_btn_month.grid_columnconfigure(3, weight=1)
+        # Метка месяца
+        self.month_label = Label(center_frame, text='', font='Calibri 16 bold')
+        self.month_label.grid(row=0, column=1, padx=5)
+
+        # Метка года
+        self.year_label = Label(center_frame, text='', font='Calibri 16 bold')
+        self.year_label.grid(row=0, column=2, padx=5)
+
+        # Кнопка "Следующий месяц"
+        btn_refresh_forward = tk.Button(center_frame, text='Следующий месяц', bg='#d7d8e0', compound=tk.CENTER,
+                                        command=lambda: self.change_months("forward"), width=19, font='helv36')
+        btn_refresh_forward.grid(row=0, column=3, padx=5)
+
 
         # =======ВИЗУАЛ БАЗЫ ДАННЫХ =========================================================================
         style = ttk.Style()
@@ -346,7 +349,7 @@ class Main(tk.Frame):
         self.tree.column('type_lift', width=90, anchor=tk.W, stretch=False)
         self.tree.column('prichina', width=130, anchor=tk.W, stretch=False)
         self.tree.column('fio', width=170, anchor=tk.W, stretch=False)
-        self.tree.column('date_to_go', width=165, anchor=tk.CENTER, stretch=False)
+        self.tree.column('date_to_go', width=185, anchor=tk.CENTER, stretch=False)
         self.tree.column("comment", width=1000, anchor=tk.W, stretch=True)
         self.tree.column("id2", width=0, anchor=tk.CENTER, stretch=tk.NO)
         self.tree.column('#0', stretch=False)
@@ -359,7 +362,7 @@ class Main(tk.Frame):
         self.tree.heading('type_lift', text='Тип')
         self.tree.heading('prichina', text='Причина')
         self.tree.heading('fio', text='Механик')
-        self.tree.heading('date_to_go', text='Дата запуска')
+        self.tree.heading('date_to_go', text='Дата устранения')
         self.tree.heading('comment', text='Комментарий', anchor=tk.W)
         self.tree.heading('id2', text='')
 
@@ -384,6 +387,9 @@ class Main(tk.Frame):
         self.on_select_city()
         self.event_of_button('all')
         Tooltip(self.tree)
+
+    def change_months(self, direction):
+        print(f"Смена месяца: {direction}")  # заглушка для логики смены месяца
 
     def label_center_switch_name(self, name, color):
         self.label_center.configure(text=f'{name}', bg=f'{color}')
@@ -705,17 +711,17 @@ class Main(tk.Frame):
                 elif type_button == 'open':
                     self.session.delete("type_button")
                     self.session.set("type_button", "open")
-                    query += ' WHERE Дата_запуска is Null AND not Причина in ("Остановлен", "Линейная", "Связь")'
+                    query += ' WHERE Дата_запуска is Null AND not Причина IN ("Остановлен", "Линейная", "Связь")'
                     query += order
                 elif type_button == 'line_open':
                     self.session.delete("type_button")
                     self.session.set("type_button", "line_open")
-                    query += ' WHERE Дата_запуска is Null AND Причина = "Линейная"'
+                    query += ' WHERE Дата_запуска is Null AND Причина IN ("Линейная", "Т.О.")'
                     query += order
                 elif type_button == 'line_close':
                     self.session.delete("type_button")
                     self.session.set("type_button", "line_close")
-                    query += ' WHERE Дата_запуска > 100 AND Причина = "Линейная"'
+                    query += ' WHERE Дата_запуска > 100 AND Причина IN ("Линейная", "Т.О.")'
                     query += end
                 elif type_button == 'started':
                     self.session.delete("type_button")
@@ -725,7 +731,7 @@ class Main(tk.Frame):
                 elif type_button == 'svyaz':
                     self.session.delete("type_button")
                     self.session.set("type_button", "svyaz")
-                    query += ' where Причина="Связь"'
+                    query += ' where Причина="Связь" AND Дата_запуска is Null'
                     query += order
                 elif type_button == 'search':
                     self.session.delete("type_button")
@@ -1359,7 +1365,7 @@ class Edit(tk.Toplevel):
         label_stop.place(x=20, y=200)
         label_fio_meh = tk.Label(self, text='ФИО механика:', font=font12)
         label_fio_meh.place(x=20, y=230)
-        label_data2 = tk.Label(self, text='Дата запуска:', font=font12)
+        label_data2 = tk.Label(self, text='Дата устранения:', font=font12)
         label_data2.place(x=20, y=260)
         label_comment = tk.Label(self, text='Комментарий:', font=font12)
         label_comment.place(x=20, y=290)
