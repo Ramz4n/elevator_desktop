@@ -306,9 +306,13 @@ class Main(tk.Frame):
         toolbar_btn_month = tk.Frame(root)
         toolbar_btn_month.pack(fill='x', pady=10)
 
-        # Слева: entry
-        self.entry = tk.Entry(toolbar_btn_month, width=20, font=('Helvetica', 14))
-        self.entry.pack(side='left', padx=10)
+        # Слева: entry_num_zayavki - поиск по номеру заявки
+        self.values_num_zayavki = tk.Variable()
+        self.entry_num_zayavki = tk.Entry(toolbar_btn_month, width=5, font=('Helvetica', 14), textvariable=self.values_num_zayavki)
+        self.entry_num_zayavki.pack(side='left', padx=1)
+        btn_num_zayavki = tk.Button(toolbar_btn_month, text='🔍', compound=tk.TOP,
+                                     command=lambda: self.event_of_button('num'), width=3, font=helv36)
+        btn_num_zayavki.pack(side='left')
 
         # Центр: отдельный фрейм для кнопок и меток
         center_frame = tk.Frame(toolbar_btn_month)
@@ -387,6 +391,7 @@ class Main(tk.Frame):
         self.on_select_city()
         self.event_of_button('all')
         Tooltip(self.tree)
+
 
     def change_months(self, direction):
         print(f"Смена месяца: {direction}")  # заглушка для логики смены месяца
@@ -703,37 +708,57 @@ class Main(tk.Frame):
                     self.session.set("type_button", "all")
                     query += ' WHERE NOT z.Причина in ("Линейная", "Связь")'
                     query += end
+                    self.entry_num_zayavki.delete(0, tk.END)
                 elif type_button == 'stopped':
                     self.session.delete("type_button")
                     self.session.set("type_button", "stopped")
                     query += ' WHERE Причина="Остановлен" AND Дата_запуска is Null'
                     query += order
+                    self.entry_num_zayavki.delete(0, tk.END)
                 elif type_button == 'open':
                     self.session.delete("type_button")
                     self.session.set("type_button", "open")
                     query += ' WHERE Дата_запуска is Null AND not Причина IN ("Остановлен", "Линейная", "Связь")'
                     query += order
+                    self.entry_num_zayavki.delete(0, tk.END)
                 elif type_button == 'line_open':
                     self.session.delete("type_button")
                     self.session.set("type_button", "line_open")
                     query += ' WHERE Дата_запуска is Null AND Причина IN ("Линейная", "Т.О.")'
                     query += order
+                    self.entry_num_zayavki.delete(0, tk.END)
                 elif type_button == 'line_close':
                     self.session.delete("type_button")
                     self.session.set("type_button", "line_close")
                     query += ' WHERE Дата_запуска > 100 AND Причина IN ("Линейная", "Т.О.")'
                     query += end
+                    self.entry_num_zayavki.delete(0, tk.END)
                 elif type_button == 'started':
                     self.session.delete("type_button")
                     self.session.set("type_button", "started")
                     query += ' where Причина="Остановлен" AND Дата_запуска is not Null'
                     query += end
+                    self.entry_num_zayavki.delete(0, tk.END)
                 elif type_button == 'svyaz':
                     self.session.delete("type_button")
                     self.session.set("type_button", "svyaz")
                     query += ' where Причина="Связь" AND Дата_запуска is Null'
                     query += order
+                    self.entry_num_zayavki.delete(0, tk.END)
+                elif type_button == 'num':
+                    value = self.values_num_zayavki.get()
+                    if not value.strip():
+                        self.session.delete("type_button")
+                        self.session.set("type_button", "all")
+                        query += ' WHERE NOT z.Причина in ("Линейная", "Связь")'
+                        query += end
+                    else:
+                        self.session.delete("type_button")
+                        self.session.set("type_button", "num")
+                        query += f' where z.Номер_заявки = {value}'
+                        query += order
                 elif type_button == 'search':
+                    self.entry_num_zayavki.delete(0, tk.END)
                     self.session.delete("type_button")
                     self.session.set("type_button", "search")
                     if address:
