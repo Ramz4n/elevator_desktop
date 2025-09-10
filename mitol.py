@@ -456,7 +456,8 @@ class Main(tk.Frame):
         self.canvas_dispetcher.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def on_select_city(self, *args):
-        selected_city = self.value_city.get()
+        self.selected_city = self.value_city.get()
+        self.obnov()
 
     def on_select_disp(self, *args):
         selected_disp = self.disp.get()
@@ -478,32 +479,6 @@ class Main(tk.Frame):
             self.enabled.set(self.pc_id)
             self.event_of_button(f'{self.session.get("type_button")}')
             self.is_on = True
-
-#ФУНКЦИЯ ПО ПОЛУЧЕНИЮ ГОРОДА И ДАЛЬНЕЙШЕМУ ПАРСИНГУ АДРЕСОВ В ОКОШКО ПО ГОРОДАМ
-    def on_select_city(self, *args):
-        self.selected_city = self.value_city.get()
-        self.obnov()
-        try:
-            with closing(self.db_manager.connect()) as connection:
-                cursor = connection.cursor(dictionary=True)
-                cursor.execute(f'''
-                    SELECT {self.street}.улица,
-                           {self.doma}.номер AS дом,
-                           {self.padik}.Номер AS падик
-                    FROM {self.goroda}
-                    JOIN {self.street} ON {self.goroda}.id = {self.street}.id_город
-                    JOIN {self.doma} ON {self.street}.id = {self.doma}.id_улица
-                    JOIN {self.lifts} ON {self.doma}.id = {self.lifts}.id_дом
-                    JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
-                    WHERE {self.goroda}.город = "{self.selected_city}"
-                    GROUP BY {self.street}.улица, {self.doma}.номер, {self.padik}.Номер
-                    ORDER BY {self.street}.улица, {self.doma}.номер, {self.padik}.Номер;''')
-                self.data_streets = cursor.fetchall()
-                for d in self.data_streets:
-                    self.address_str = f"{d['улица']}, {d['дом']}, {d['падик']}"
-                    self.listbox_addresses.insert(tk.END, self.address_str)
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     # ===РЕДАКТИРОВАТЬ========================================================================
     def edit(self, event):
@@ -987,7 +962,7 @@ class Main(tk.Frame):
 
     def check_input_address(self, _event=None):
         '''
-        ПАРСИНГ АДРЕСОВ ИЗ СПИСКА АДРЕСОВ В ЛИСТБОКС.
+        ПАРСИНГ АДРЕСОВ ИЗ БД В ЛИСТБОКС.
         '''
         self.listbox_type.delete(0, tk.END)
         names = []
@@ -1031,7 +1006,7 @@ class Main(tk.Frame):
 
     def on_change_selection_address(self, event):
         '''
-        ВСТАВКА АДРЕСА ИЗ ПАРСИНГА В ЛИСТБОКС.
+        ВСТАВКА АДРЕСА В СТРОКУ ПРИ НАЖАТИИ НА НЕГО ИЗ ПАРСИНГА В ЛИСТБОКС.
         '''
         self.selection = event.widget.curselection()
         if self.selection:
