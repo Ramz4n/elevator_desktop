@@ -1,4 +1,31 @@
 from imports import *
+# import sys
+# import os
+# import subprocess
+# import tkinter as tk
+# from tkinter import messagebox
+# from packaging.version import Version # Для сравнения версий
+# import requests # Также необходим для check_for_updates
+#
+# # Импортируем функции из нашего updater.py
+# # Убедитесь, что updater.py находится в том же каталоге или доступен по PYTHONPATH
+# try:
+#     from updater import get_current_version, get_latest_version, GITHUB_USER, GITHUB_REPO, RELEASE_FILENAME
+# except ImportError:
+#     # Fallback for when running as a compiled executable
+#     # Assumes updater.py is in the same directory as the executable
+#     # or in a subdirectory named 'lib'
+#     if getattr(sys, 'frozen', False):
+#         exe_dir = os.path.dirname(sys.executable)
+#         sys.path.append(exe_dir)
+#         try:
+#             from updater import get_current_version, get_latest_version, GITHUB_USER, GITHUB_REPO, RELEASE_FILENAME
+#         except ImportError:
+#             messagebox.showerror("Ошибка", "Не удалось загрузить модуль обновления. Проверьте updater.py.")
+#             sys.exit(1)
+#     else:
+#         messagebox.showerror("Ошибка", "Не удалось загрузить модуль обновления. Проверьте updater.py.")
+#         sys.exit(1)
 
 class Main(tk.Frame):
     def __init__(self, root):
@@ -804,7 +831,7 @@ class Main(tk.Frame):
             mb.showerror("Ошибка!", msg)
 
     # ===РЕДАКТИРОВАНИЕ ДАННЫХ В БД===================================================================
-    def update_record(self, data, dispetcher, town, street, house, padik, type_lift, prichina, fio_meh, date_to_go, comment, callback):
+    def update_record(self, data, dispetcher, town, street, house, padik, type_lift, lift_id, prichina, fio_meh, date_to_go, comment, callback):
         # self.session.get("type_button")
         try:
             date_object = datetime.datetime.strptime(data, time_format)
@@ -813,14 +840,14 @@ class Main(tk.Frame):
                 value_to_edit = (int(date_object.timestamp()),
                         dispetcher, town, street, house,
                         padik, type_lift, prichina, fio_meh,
-                        date_to_go, comment)
+                        date_to_go, comment, lift_id)
             else:
                 try:
                     date_object2 = datetime.datetime.strptime(date_to_go, time_format)
                     value_to_edit = (int(date_object.timestamp()),
                             dispetcher, town, street, house,
                             padik, type_lift, prichina,fio_meh,
-                        int(date_object2.timestamp()), comment)
+                        int(date_object2.timestamp()), comment, lift_id)
                 except ValueError:
                     msg = "Введите дату в формате ДД.ММ.ГГГГ, ЧЧ:ММ или нажмите на нужную заявку, а потом на кнопку 'Отметить время'"
                     mb.showerror("Ошибка", msg)
@@ -849,7 +876,8 @@ class Main(tk.Frame):
                                         z.Причина = ?, 
                                         z.id_Механик = ?, 
                                         z.Дата_запуска = ?, 
-                                        z.Комментарий = ?
+                                        z.Комментарий = ?,
+                                        z.id_лифт = ?
                                     WHERE z.ID = ?;''',
                                (value_to_edit + (self.tree.set(self.tree.selection()[0], '#11'),)))
                 connection.commit()
@@ -1646,7 +1674,7 @@ class Edit(tk.Toplevel):
             self.all_id_address[0]['home_id'],
             self.all_id_address[0]['padik_id'],
             self.combobox_lift.get(),
-            # self.all_id_address[0]['lifts_id'],
+            self.all_id_address[0]['lifts_id'],
             self.combobox_stop.get(),
             self.get_selected_meh_id(),
             self.calen2.get(),
@@ -1982,6 +2010,48 @@ class Excel():
 
 
 if __name__ == "__main__":
+    # # Проверка обновлений перед запуском основного приложения
+    # current_version = get_current_version()
+    # latest_version = get_latest_version()
+    #
+    # if latest_version and Version(latest_version) > Version(current_version):
+    #     response = messagebox.askyesno(
+    #         "Доступно обновление",
+    #         f"Доступна новая версия: {latest_version}. Ваша текущая версия: {current_version}.\nХотите обновиться сейчас?"
+    #     )
+    #     if response:
+    #         url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/releases/latest"
+    #         try:
+    #             response_github = requests.get(url)
+    #             response_github.raise_for_status()
+    #             release_info = response_github.json()
+    #             download_url = None
+    #             for asset in release_info["assets"]:
+    #                 if asset["name"] == RELEASE_FILENAME:
+    #                     download_url = asset["browser_download_url"]
+    #                     break
+    #
+    #             if download_url:
+    #                 if getattr(sys, 'frozen', False):
+    #                     current_app_path = os.path.dirname(sys.executable)
+    #                     updater_script_path = os.path.join(current_app_path, "updater.exe")
+    #                 else:
+    #                     current_app_path = os.path.dirname(os.path.abspath(__file__))
+    #                     updater_script_path = os.path.join(current_app_path, "updater.py")
+    #
+    #                 # Запускаем updater.py в отдельном процессе
+    #                 subprocess.Popen([sys.executable, updater_script_path, "--update", download_url, current_app_path])
+    #                 messagebox.showinfo("Обновление", "Приложение будет обновлено. Пожалуйста, перезапустите приложение после завершения обновления.")
+    #                 sys.exit(0) # Закрываем текущее приложение
+    #             else:
+    #                 messagebox.showerror("Ошибка обновления", f"Не удалось найти файл {RELEASE_FILENAME} в последнем релизе на GitHub.")
+    #         except requests.exceptions.RequestException as e:
+    #             messagebox.showerror("Ошибка обновления", f"Не удалось получить информацию о релизе с GitHub: {e}")
+    #     else:
+    #         messagebox.showinfo("Обновление", "Обновление отменено.")
+    # else:
+    #     print("У вас установлена последняя версия приложения.")
+    #
     time_format = "%d.%m.%y, %H:%M"
     root = tk.Tk()
     app = Main(root)
