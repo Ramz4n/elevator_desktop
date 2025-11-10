@@ -1,31 +1,4 @@
 from imports import *
-# import sys
-# import os
-# import subprocess
-# import tkinter as tk
-# from tkinter import messagebox
-# from packaging.version import Version # Для сравнения версий
-# import requests # Также необходим для check_for_updates
-#
-# # Импортируем функции из нашего updater.py
-# # Убедитесь, что updater.py находится в том же каталоге или доступен по PYTHONPATH
-# try:
-#     from updater import get_current_version, get_latest_version, GITHUB_USER, GITHUB_REPO, RELEASE_FILENAME
-# except ImportError:
-#     # Fallback for when running as a compiled executable
-#     # Assumes updater.py is in the same directory as the executable
-#     # or in a subdirectory named 'lib'
-#     if getattr(sys, 'frozen', False):
-#         exe_dir = os.path.dirname(sys.executable)
-#         sys.path.append(exe_dir)
-#         try:
-#             from updater import get_current_version, get_latest_version, GITHUB_USER, GITHUB_REPO, RELEASE_FILENAME
-#         except ImportError:
-#             messagebox.showerror("Ошибка", "Не удалось загрузить модуль обновления. Проверьте updater.py.")
-#             sys.exit(1)
-#     else:
-#         messagebox.showerror("Ошибка", "Не удалось загрузить модуль обновления. Проверьте updater.py.")
-#         sys.exit(1)
 
 class Main(tk.Frame):
     def __init__(self, root):
@@ -236,7 +209,7 @@ class Main(tk.Frame):
         frame_prichina = tk.Frame()
         label_prichina = tk.Label(toolbar_prichina, borderwidth=1, width=14, relief="raised", text="Причина", font='Calibri 16 bold')
         label_prichina.pack(fill=tk.X)
-        self.list_prichina = ['Неисправность', 'Застревание', 'Остановлен', 'Связь', 'Линейная', 'Т.О.']
+        self.list_prichina = ['Неисправность', 'Застревание', 'Остановлен', 'Связь', 'Линейная', 'Т.О.', 'УК']
         self.value_prichina = tk.StringVar(value='?')
         for pr in self.list_prichina:
             btn_prichina = tk.Radiobutton(toolbar_prichina, text=pr, value=pr, variable=self.value_prichina, font='Calibri  16')
@@ -325,6 +298,9 @@ class Main(tk.Frame):
         btn_svyaz = tk.Button(general_tool_button, text='Связь', compound=tk.TOP,
                                      command=lambda: self.event_of_button('svyaz'), width=19, font=helv36)
         btn_svyaz.pack(side=tk.TOP)
+        btn_uk = tk.Button(general_tool_button, text='Заявки УК', compound=tk.TOP,
+                              command=lambda: self.event_of_button('uk'), width=19, font=helv36)
+        btn_uk.pack(side=tk.TOP)
         # === ПЕРЕЛИСТЫВАНИЕ БД ПО МЕСЯЦАМ=====================================================================
         self.months = ["Январь", "Февраль", "Март", "Апрель",
                        "Май", "Июнь", "Июль", "Август",
@@ -720,7 +696,7 @@ class Main(tk.Frame):
                 elif type_button == 'open':
                     self.session.delete("type_button")
                     self.session.set("type_button", "open")
-                    query += ' WHERE Дата_запуска is Null AND not Причина IN ("Остановлен", "Линейная", "Связь")'
+                    query += ' WHERE Дата_запуска is Null AND not Причина IN ("Остановлен", "Линейная", "Связь", "УК")'
                     query += order
                     self.entry_num_zayavki.delete(0, tk.END)
                 elif type_button == 'line_open':
@@ -745,6 +721,12 @@ class Main(tk.Frame):
                     self.session.delete("type_button")
                     self.session.set("type_button", "svyaz")
                     query += ' where Причина="Связь" AND Дата_запуска is Null'
+                    query += order
+                    self.entry_num_zayavki.delete(0, tk.END)
+                elif type_button == 'uk':
+                    self.session.delete("type_button")
+                    self.session.set("type_button", "uk")
+                    query += ' where Причина="УК" AND Дата_запуска is Null'
                     query += order
                     self.entry_num_zayavki.delete(0, tk.END)
                 elif type_button == 'num':
@@ -1476,7 +1458,7 @@ class Edit(tk.Toplevel):
         self.combobox_lift.place(x=200, y=170)
 #==============================================================================================
         self.combobox_stop = ttk.Combobox(self, values=list(dict.fromkeys(
-                    [self.rows[0]['причина'], 'Неисправность', 'Застревание', 'Остановлен', 'Линейная', 'Связь'])), font=font10, state='readonly')
+                    [self.rows[0]['причина'], 'Неисправность', 'Застревание', 'Остановлен', 'Линейная', 'Связь', 'Т.О.', 'УК'])), font=font10, state='readonly')
         self.combobox_stop.current(0)
         self.combobox_stop.place(x=200, y=200)
 #==============================================================================================
@@ -2010,48 +1992,6 @@ class Excel():
 
 
 if __name__ == "__main__":
-    # # Проверка обновлений перед запуском основного приложения
-    # current_version = get_current_version()
-    # latest_version = get_latest_version()
-    #
-    # if latest_version and Version(latest_version) > Version(current_version):
-    #     response = messagebox.askyesno(
-    #         "Доступно обновление",
-    #         f"Доступна новая версия: {latest_version}. Ваша текущая версия: {current_version}.\nХотите обновиться сейчас?"
-    #     )
-    #     if response:
-    #         url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/releases/latest"
-    #         try:
-    #             response_github = requests.get(url)
-    #             response_github.raise_for_status()
-    #             release_info = response_github.json()
-    #             download_url = None
-    #             for asset in release_info["assets"]:
-    #                 if asset["name"] == RELEASE_FILENAME:
-    #                     download_url = asset["browser_download_url"]
-    #                     break
-    #
-    #             if download_url:
-    #                 if getattr(sys, 'frozen', False):
-    #                     current_app_path = os.path.dirname(sys.executable)
-    #                     updater_script_path = os.path.join(current_app_path, "updater.exe")
-    #                 else:
-    #                     current_app_path = os.path.dirname(os.path.abspath(__file__))
-    #                     updater_script_path = os.path.join(current_app_path, "updater.py")
-    #
-    #                 # Запускаем updater.py в отдельном процессе
-    #                 subprocess.Popen([sys.executable, updater_script_path, "--update", download_url, current_app_path])
-    #                 messagebox.showinfo("Обновление", "Приложение будет обновлено. Пожалуйста, перезапустите приложение после завершения обновления.")
-    #                 sys.exit(0) # Закрываем текущее приложение
-    #             else:
-    #                 messagebox.showerror("Ошибка обновления", f"Не удалось найти файл {RELEASE_FILENAME} в последнем релизе на GitHub.")
-    #         except requests.exceptions.RequestException as e:
-    #             messagebox.showerror("Ошибка обновления", f"Не удалось получить информацию о релизе с GitHub: {e}")
-    #     else:
-    #         messagebox.showinfo("Обновление", "Обновление отменено.")
-    # else:
-    #     print("У вас установлена последняя версия приложения.")
-    #
     time_format = "%d.%m.%y, %H:%M"
     root = tk.Tk()
     app = Main(root)
