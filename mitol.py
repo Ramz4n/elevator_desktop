@@ -3,7 +3,7 @@ from imports import *
 class Main(tk.Frame):
     def __init__(self, root):
         super().__init__(root)
-        root.title("МиТОЛ")
+        root.title("Восток")
         root.state("zoomed")
         root.resizable(False, True)
         self.session = Session()
@@ -573,6 +573,9 @@ class Main(tk.Frame):
         # Теперь ставим время
         try:
             self.id_mechanic = self.choose_ispolnitel()
+            # Извлекаем id из словаря, если self.id_mechanic не None
+            id_ispolnitel = self.id_mechanic["id"] if self.id_mechanic else None
+
             date_str = datetime.datetime.now().strftime("%d.%m.%y, %H:%M")
             time_obj = datetime.datetime.strptime(date_str, time_format)
             unix_time = int(time_obj.timestamp())
@@ -581,7 +584,7 @@ class Main(tk.Frame):
                 cursor = connection.cursor()
                 cursor.execute(
                     f"UPDATE {self.zayavki} SET Дата_запуска=?, id_исполнитель=? WHERE ID=?",
-                    [unix_time, self.id_mechanic, selected_id]
+                    [unix_time, id_ispolnitel, selected_id]
                 )
                 connection.commit()
 
@@ -892,28 +895,22 @@ class Main(tk.Frame):
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor()
-                cursor.execute(f'''UPDATE {self.zayavki} z
-                                    JOIN {self.workers} w_disp ON z.id_Диспетчер = w_disp.id
-                                    JOIN {self.goroda} g ON z.id_город = g.id
-                                    JOIN {self.street} s ON z.id_улица = s.id
-                                    JOIN {self.doma} d ON z.id_дом = d.id
-                                    JOIN {self.padik} p ON z.id_подъезд = p.id
-                                    JOIN {self.workers} w_mech ON z.id_Механик = w_mech.id
-                                    SET z.Дата_заявки = ?, 
-                                        z.id_Диспетчер = ?, 
-                                        z.id_город = ?, 
-                                        z.id_улица = ?, 
-                                        z.id_дом = ?, 
-                                        z.id_подъезд = ?, 
-                                        z.тип_лифта = ?, 
-                                        z.Причина = ?, 
-                                        z.id_Механик = ?, 
-                                        z.id_исполнитель = ?,
-                                        z.Дата_запуска = ?, 
-                                        z.Комментарий = ?,
-                                        z.id_лифт = ?
-                                    WHERE z.ID = ?;''',
-                               (self.value_to_edit,))
+                cursor.execute(f'''UPDATE {self.zayavki} SET 
+                                        Дата_заявки = ?, 
+                                        id_Диспетчер = ?, 
+                                        id_город = ?, 
+                                        id_улица = ?, 
+                                        id_дом = ?, 
+                                        id_подъезд = ?, 
+                                        тип_лифта = ?, 
+                                        Причина = ?, 
+                                        id_Механик = ?, 
+                                        id_исполнитель = ?,
+                                        Дата_запуска = ?, 
+                                        Комментарий = ?,
+                                        id_лифт = ?
+                                    WHERE ID = ?;''',
+                               self.value_to_edit)
                 connection.commit()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1006,7 +1003,7 @@ class Main(tk.Frame):
                                     JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
                                     WHERE {self.goroda}.город = "{self.selected_city}" AND {self.street}.улица = "{street}"
                                     and {self.doma}.номер = "{home}" and {self.padik}.номер = "{entrance}" 
-                                    order BY {self.street}.улица, {self.doma}.`номер`, {self.padik}.`номер`''')
+                                    order BY {self.street}.улица, {self.doma}.номер, {self.padik}.номер''')
                 data_lifts = cursor.fetchall()
                 for lift in data_lifts:
                     lift_str = f"{lift['Тип_лифта']}"
@@ -1039,8 +1036,8 @@ class Main(tk.Frame):
                         JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
                         JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
                         WHERE {self.goroda}.Город = '{self.selected_city}' AND {self.doma}.is_active = 1
-                        group BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`
-						ORDER BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`''')
+                        group BY {self.street}.Улица, {self.doma}.Номер, {self.padik}.Номер
+						ORDER BY {self.street}.Улица, {self.doma}.Номер, {self.padik}.Номер''')
                 data_streets = cursor.fetchall()
                 for d in data_streets:
                     address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"
@@ -1716,6 +1713,28 @@ class Edit(tk.Toplevel):
         else:
             return selected_ispolnitel_id
 
+    def is_data_changed(self):
+        original_data = self.rows[0]
+
+        current_data = {
+            'Дата_заявки': self.calen1.get(),
+            'Диспетчер': self.dispetcher.get(),
+            'Город': self.combobox_town.get(),
+            'Адрес': self.address_combobox.get(),
+            'тип_лифта': self.selected_type.get(),
+            'причина': self.combobox_stop.get(),
+            'Принял': self.combobox_meh.get(),
+            'Исполнил': self.combobox_ispolnitel.get(),
+            'дата_запуска': self.calen2.get(),
+            'комментарий': self.entry_comment.get()
+        }
+
+        # Проверяем, изменились ли какие-либо значения
+        for key, value in current_data.items():
+            if str(original_data[key]) != str(value):
+                return True
+        return False
+
     def save_and_close(self):
         if self.get_selected_adres_id() == 'ВЫБРАТЬ АДРЕС' or self.selected_type.get() == 'ВЫБРАТЬ ЛИФТ':
             self.grab_set()  # Блокируем доступ к другим окнам
@@ -1733,7 +1752,20 @@ class Edit(tk.Toplevel):
             self.destroy()  # Просто закрываем окно, если ничего не изменилось
             return
 
-        self.view.update_record(self.get_all_values(), self.destroy())
+        self.view.update_record(self.calen1.get(),
+                                self.get_selected_dispetcher_id(),
+                                self.get_selected_town_id(),
+                                self.get_selected_adres_id()[0]['street_id'],
+                                self.get_selected_adres_id()[0]['home_id'],
+                                self.get_selected_adres_id()[0]['padik_id'],
+                                self.selected_type.get(),
+                                self.get_selected_adres_id()[0]['lifts_id'],
+                                self.combobox_stop.get(),
+                                self.get_selected_meh_id(),
+                                self.get_selected_ispolnitel_id(),
+                                self.calen2.get(),
+                                self.entry_comment.get(),
+                                self.destroy())
 
 class Search(tk.Toplevel):
     def __init__(self):
@@ -1914,7 +1946,7 @@ class Search(tk.Toplevel):
                         JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
                         WHERE {self.goroda}.Город = '{self.selected_city}' AND {self.doma}.is_active = 1
                         group BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`
-						ORDER BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`''')
+						ORDER BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"
@@ -1940,7 +1972,7 @@ class Search(tk.Toplevel):
                         JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
                         WHERE {self.goroda}.Город = '{self.selected_city}'
                         group BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`
-						ORDER BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`''')
+						ORDER BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"  # Парсим адреса из файла
