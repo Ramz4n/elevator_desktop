@@ -19,6 +19,7 @@ import sys
 from speech import Speech_recorder
 import threading
 from menu_errors import Menu_errors
+from ispolnitel import Choose_ispolnitel
 from afternoon_statistic import Afternoon_statistic
 from telegram import Bot
 from session import Session

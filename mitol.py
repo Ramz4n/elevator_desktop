@@ -346,7 +346,7 @@ class Main(tk.Frame):
         style.configure("mystyle.Treeview.Heading", font=('Helvetica', 16, 'bold'))
         style.layout("mystyle.Treeview", [('mystyle.Treeview.treearea', {'sticky': 'nswe'})])
         self.tree = ttk.Treeview(self, style="mystyle.Treeview",
-        columns=('ID', 'date', 'dispetcher', 'town', 'adress', 'type_lift', 'prichina', 'fio', 'date_to_go', 'comment', 'id2'),
+        columns=('ID', 'date', 'dispetcher', 'town', 'adress', 'type_lift', 'prichina', 'fio', 'ispolnitel', 'date_to_go', 'comment', 'id2'),
                                  height=50, show='headings')
         self.tree.column('ID', width=60, anchor=tk.CENTER, stretch=False)
         self.tree.column('date', width=165, anchor=tk.W, stretch=False)
@@ -356,10 +356,12 @@ class Main(tk.Frame):
         self.tree.column('type_lift', width=90, anchor=tk.W, stretch=False)
         self.tree.column('prichina', width=130, anchor=tk.W, stretch=False)
         self.tree.column('fio', width=170, anchor=tk.W, stretch=False)
+        self.tree.column('ispolnitel', width=170, anchor=tk.W, stretch=False)
         self.tree.column('date_to_go', width=185, anchor=tk.CENTER, stretch=False)
         self.tree.column("comment", width=1000, anchor=tk.W, stretch=True)
         self.tree.column("id2", width=0, anchor=tk.CENTER, stretch=tk.NO)
         self.tree.column('#0', stretch=False)
+
 
         self.tree.heading('ID', text='№')
         self.tree.heading('date', text='Дата заявки')
@@ -368,10 +370,12 @@ class Main(tk.Frame):
         self.tree.heading('adress', text='Адрес')
         self.tree.heading('type_lift', text='Тип')
         self.tree.heading('prichina', text='Причина')
-        self.tree.heading('fio', text='Механик')
+        self.tree.heading('fio', text='Принял')
+        self.tree.heading('ispolnitel', text='Исполнил')
         self.tree.heading('date_to_go', text='Дата устранения')
         self.tree.heading('comment', text='Комментарий', anchor=tk.W)
         self.tree.heading('id2', text='')
+
 
         # Создаем экземпляр класса Menu_errors и передаем ему виджет tree
         self.menu_errors = Menu_errors(self.tree, self.clipboard, self.lojnaya, self.error,
@@ -395,6 +399,11 @@ class Main(tk.Frame):
         self.event_of_button('all')
         Tooltip(self.tree)
 
+    def choose_ispolnitel(self):
+        # Создаем экземпляр класса Add_ispolnitel
+        win = Choose_ispolnitel(self.db_manager)
+        self.wait_window(win)  # ← САМЫЙ ГЛАВНЫЙ МОМЕНТ
+        return win.selected_mechanic
 
     def change_months(self, direction):
         print(f"Смена месяца: {direction}")  # заглушка для логики смены месяца
@@ -402,11 +411,19 @@ class Main(tk.Frame):
     def label_center_switch_name(self, name, color):
         self.label_center.configure(text=f'{name}', bg=f'{color}')
 
+    def get_last_column_value(self):
+        try:
+            selected_item_id = self.tree.selection()[0]  # получаем выбранный элемент
+            value = self.tree.set(selected_item_id, "id2")  # список имён колонок
+            return value
+        except Exception as e:
+            print(f"Ошибка при получении значения последней колонки: {e}")
+            return None
+
     def clipboard(self):
         if self.tree.selection():
             try:
-                selected_item_id = self.tree.selection()[0]
-                request_id = self.tree.set(selected_item_id, '#11')
+                request_id = self.get_last_column_value()
 
                 with closing(self.db_manager.connect()) as connection:
                     cursor = connection.cursor()
@@ -496,7 +513,8 @@ class Main(tk.Frame):
                                        CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                                        тип_лифта,
                                        причина,
-                                       m.ФИО,
+                                       m1.ФИО as Принял,
+                                       m2.ФИО as Исполнил,
                                        FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS дата_запуска,
                                        комментарий
                                 FROM {self.zayavki} z
@@ -505,9 +523,10 @@ class Main(tk.Frame):
                                 JOIN {self.street} s ON z.id_улица = s.id
                                 JOIN {self.doma} d ON z.id_дом = d.id
                                 JOIN {self.padik} p ON z.id_подъезд = p.id
-                                JOIN {self.workers} m ON z.id_механик = m.id
+                                JOIN {self.workers} m1 ON z.id_механик = m1.id
+                                LEFT JOIN {self.workers} m2 ON z.id_исполнитель = m2.id
                                      where z.id=?''',
-                                   (self.tree.set(self.tree.selection()[0], '#11'),))
+                                   (self.get_last_column_value(),))
                     rows = cursor.fetchall()
                     Edit(rows)
             except mariadb.Error as e:
@@ -518,38 +537,69 @@ class Main(tk.Frame):
 
     # ===ВСТАВКА ВРЕМЕНИ В БД=======================================================================
     def time_to(self, event):
-        date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%y, %H:%M")
-        time_obj = datetime.datetime.strptime(date_, time_format)
-        unix_time = int(time_obj.timestamp())
-        if self.tree.selection():
-            try:
-                with closing(self.db_manager.connect()) as connection:
-                    cursor = connection.cursor()
-                    cursor.execute(f'''SELECT Дата_запуска from {self.zayavki} WHERE id=?''',
-                                   [self.tree.set(self.tree.selection()[0], '#11')])
-                    info = cursor.fetchone()
-                    connection.commit()
-                    if info[0] is None:
-                        try:
-                            with closing(self.db_manager.connect()) as connection:
-                                cursor = connection.cursor()
-                                cursor.execute(
-                                    f'''UPDATE {self.zayavki} set Дата_запуска=? WHERE ID=?''',
-                                    [unix_time, self.tree.set(self.tree.selection()[0], '#11')])
-                                connection.commit()
-                        except mariadb.Error as e:
-                            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-                    else:
-                        mb.showerror("Ошибка","Строка со временем уже заполнена")
-                        return
-            except mariadb.Error as e:
-                showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        else:
-            mb.showerror("Ошибка","Строка не выбрана")
+        try:
+            selected_id = self.get_last_column_value()
+        except:
+            mb.showerror("Ошибка", "Строка не выбрана")
             return
-        self.event_of_button(f'{self.session.get("type_button")}')
-        msg = f"Время отмечено!"
-        self.show_temporary_message('Информация', msg)
+
+        # Проверяем, есть ли время запуска
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    f"SELECT Дата_запуска, id_исполнитель FROM {self.zayavki} WHERE id=?",
+                    [selected_id])
+                info = cursor.fetchone()
+
+        except mariadb.Error as e:
+            showinfo("Информация", f"Ошибка при работе с базой данных: {e}")
+            return
+
+        # === ЕСЛИ ВРЕМЯ УЖЕ ЕСТЬ ===
+        if info and info[0] is not None and info[1] is None:
+            answer = mb.askyesno("Внимание", "Время уже указано.\nВставить исполнителя?")
+            if answer:
+                mech = self.choose_ispolnitel()
+                if mech:
+                    self.add_ispolnitel(mech["id"], selected_id)
+                    self.event_of_button(self.session.get("type_button"))
+                    self.show_temporary_message("Информация", "Исполнитель добавлен!")
+            return
+        elif info and info[0] is not None and info[1] is not None:
+            showinfo("Информация", f"Время и исполнитель уже отмечены. Для дальнейшего изменения зайдите в раздел редактирования!")
+            return
+
+        # Теперь ставим время
+        try:
+            self.id_mechanic = self.choose_ispolnitel()
+            date_str = datetime.datetime.now().strftime("%d.%m.%y, %H:%M")
+            time_obj = datetime.datetime.strptime(date_str, time_format)
+            unix_time = int(time_obj.timestamp())
+
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    f"UPDATE {self.zayavki} SET Дата_запуска=?, id_исполнитель=? WHERE ID=?",
+                    [unix_time, self.id_mechanic, selected_id]
+                )
+                connection.commit()
+
+            self.event_of_button(self.session.get("type_button"))
+            self.show_temporary_message("Информация", "Время отмечено!")
+
+        except mariadb.Error as e:
+            showinfo("Информация", f"Ошибка при работе с базой данных: {e}")
+
+    # ===ДОБАВЛЕНИЕ ИСПОЛНИТЕЛЯ=====================================================================
+    def add_ispolnitel(self, id_ispolnitel, selected_id):
+        with closing(self.db_manager.connect()) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                f"UPDATE {self.zayavki} SET id_исполнитель=? WHERE ID=?",
+                [id_ispolnitel, selected_id])
+            connection.commit()
+
 
     # ===УДАЛЕНИЕ СТРОКИ=====================================================================
     def delete(self, event):
@@ -559,7 +609,7 @@ class Main(tk.Frame):
                 try:
                     with closing(self.db_manager.connect()) as connection:
                         cursor = connection.cursor()
-                        id_value = self.tree.set(self.tree.selection()[0], '#11')
+                        id_value = self.get_last_column_value()
                         cursor.execute(f'''UPDATE {self.zayavki} 
                                             SET pc_id = NULL
                                             WHERE ID = ?''', (id_value,))
@@ -585,7 +635,7 @@ class Main(tk.Frame):
                 with closing(self.db_manager.connect()) as connection:
                     cursor = connection.cursor()
                     cursor.execute(f'''UPDATE {self.zayavki} set Дата_запуска=?, Комментарий=? WHERE ID=?''',
-                                   [unix_time, f'{event}', self.tree.set(self.tree.selection()[0], '#11')])
+                                   [unix_time, f'{event}', self.get_last_column_value()])
                     connection.commit()
             except mariadb.Error as e:
                 showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -603,7 +653,7 @@ class Main(tk.Frame):
                 with closing(self.db_manager.connect()) as connection:
                     cursor = connection.cursor()
                     cursor.execute(f'''UPDATE {self.zayavki} set Комментарий=? WHERE ID=?''',
-                                   [f'{event}', self.tree.set(self.tree.selection()[0], '#11')])
+                                   [f'{event}', self.get_last_column_value()])
                     connection.commit()
             except mariadb.Error as e:
                 showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -620,8 +670,7 @@ class Main(tk.Frame):
             try:
                 with closing(self.db_manager.connect()) as connection:
                     cursor = connection.cursor()
-                    selected_item_id = self.tree.selection()[0]  # Получаем ID выбранного элемента
-                    item_id = self.tree.set(selected_item_id, '#11')
+                    item_id = self.get_last_column_value()
                     cursor.execute(f'''select Комментарий from {self.zayavki} WHERE ID=?''', (item_id,))
                     connection.commit()
                     now = cursor.fetchone()
@@ -647,7 +696,8 @@ class Main(tk.Frame):
                    CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                    тип_лифта,
                    причина,
-                   m.ФИО,
+                   m1.ФИО as Принял,
+                   m2.ФИО as Исполнил,
                    FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                    комментарий,
                    z.id
@@ -657,7 +707,8 @@ class Main(tk.Frame):
                    JOIN {self.street} s ON z.id_улица = s.id
                    JOIN {self.doma} d ON z.id_дом = d.id
                    JOIN {self.padik} p ON z.id_подъезд = p.id
-                   JOIN {self.workers} m ON z.id_механик = m.id'''
+                   JOIN {self.workers} m1 ON z.id_механик = m1.id
+                   LEFT JOIN {self.workers} m2 ON z.id_исполнитель = m2.id'''
 
 
     def event_of_button(self, type_button, town=None, address=None, calendar1=None, calendar2=None, callback=None):
@@ -671,7 +722,7 @@ class Main(tk.Frame):
 
         try:
             with closing(self.db_manager.connect()) as connection:
-                cursor = connection.cursor()
+                cursor = connection.cursor(dictionary=True)
                 query = self.query()
 
                 end = f''' AND FROM_UNIXTIME(Дата_заявки, '%m') = '{str(self.current_month_index + 1).zfill(2)}'
@@ -758,18 +809,19 @@ class Main(tk.Frame):
 
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
-                    formatted_row = [value if value is not None else "" for value in row]
+                    # заменяем None -> ""
+                    row = {k: ("" if v is None else v) for k, v in row.items()}
 
-                    if formatted_row[-3] == "" and formatted_row[-5] == 'Остановлен':
-                        self.tree.insert('', 'end', values=tuple(formatted_row), tags=('Red.Treeview',))
-                    elif formatted_row[-3] == "" and formatted_row[-5] in ('Неисправность', 'Застревание'):
-                        self.tree.insert('', 'end', values=tuple(formatted_row), tags=('Blue.Treeview',))
-                    elif formatted_row[-3] != "" and formatted_row[-5] in ('Остановлен'):
-                        self.tree.insert('', 'end', values=tuple(formatted_row), tags=('Green.Treeview',))
-                    elif formatted_row[-3] != "" and formatted_row[-5] in ('Линейная'):
-                        self.tree.insert('', 'end', values=tuple(formatted_row), tags=('Violet.Treeview',))
+                    if not row["Дата_запуска"] and row["причина"] == "Остановлен":
+                        self.tree.insert('', 'end', values=tuple(row.values()), tags=('Red.Treeview',))
+                    elif not row["Дата_запуска"] and row["причина"] in ('Неисправность', 'Застревание'):
+                        self.tree.insert('', 'end', values=tuple(row.values()), tags=('Blue.Treeview',))
+                    elif row["Дата_запуска"] and row["причина"] == "Остановлен":
+                        self.tree.insert('', 'end', values=tuple(row.values()), tags=('Green.Treeview',))
+                    elif row["Дата_запуска"] and row["причина"] == "Линейная":
+                        self.tree.insert('', 'end', values=tuple(row.values()), tags=('Violet.Treeview',))
                     else:
-                        self.tree.insert('', 'end', values=tuple(formatted_row))
+                        self.tree.insert('', 'end', values=tuple(row.values()))
 
                 connection.commit()
                 self.tree.yview_moveto(1.0)
@@ -813,23 +865,22 @@ class Main(tk.Frame):
             mb.showerror("Ошибка!", msg)
 
     # ===РЕДАКТИРОВАНИЕ ДАННЫХ В БД===================================================================
-    def update_record(self, data, dispetcher, town, street, house, padik, type_lift, lift_id, prichina, fio_meh, date_to_go, comment, callback):
-        # self.session.get("type_button")
+    def update_record(self, data, dispetcher, town, street, house, padik, type_lift, lift_id, prichina, fio_meh, fio_ispolnitel, date_to_go, comment, callback):
         try:
             date_object = datetime.datetime.strptime(data, time_format)
             if date_to_go == None or date_to_go == '':
                 date_to_go = None
-                value_to_edit = (int(date_object.timestamp()),
+                self.value_to_edit = (int(date_object.timestamp()),
                         dispetcher, town, street, house,
-                        padik, type_lift, prichina, fio_meh,
-                        date_to_go, comment, lift_id)
+                        padik, type_lift, prichina, fio_meh, fio_ispolnitel,
+                        date_to_go, comment, lift_id, self.get_last_column_value())
             else:
                 try:
                     date_object2 = datetime.datetime.strptime(date_to_go, time_format)
-                    value_to_edit = (int(date_object.timestamp()),
+                    self.value_to_edit = (int(date_object.timestamp()),
                             dispetcher, town, street, house,
-                            padik, type_lift, prichina,fio_meh,
-                        int(date_object2.timestamp()), comment, lift_id)
+                            padik, type_lift, prichina, fio_meh, fio_ispolnitel,
+                        int(date_object2.timestamp()), comment, lift_id, self.get_last_column_value())
                 except ValueError:
                     msg = "Введите дату в формате ДД.ММ.ГГГГ, ЧЧ:ММ или нажмите на нужную заявку, а потом на кнопку 'Отметить время'"
                     mb.showerror("Ошибка", msg)
@@ -857,11 +908,12 @@ class Main(tk.Frame):
                                         z.тип_лифта = ?, 
                                         z.Причина = ?, 
                                         z.id_Механик = ?, 
+                                        z.id_исполнитель = ?,
                                         z.Дата_запуска = ?, 
                                         z.Комментарий = ?,
                                         z.id_лифт = ?
                                     WHERE z.ID = ?;''',
-                               (value_to_edit + (self.tree.set(self.tree.selection()[0], '#11'),)))
+                               (self.value_to_edit,))
                 connection.commit()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -879,7 +931,7 @@ class Main(tk.Frame):
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor()
                 cursor.execute(f'''UPDATE {self.zayavki} SET Комментарий=? WHERE ID=?''',
-                               (comment, self.tree.set(self.tree.selection()[0], '#11')))
+                               (comment, self.get_last_column_value()))
                 connection.commit()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1292,14 +1344,24 @@ class Tooltip:
         row_id = self.widget.identify_row(event.y)
         column_id = self.widget.identify_column(event.x)
 
+        # Проверяем, наведена ли мышь на другую ячейку
         if row_id != self.last_row_id or column_id != self.last_column_id:
             self.last_row_id = row_id
             self.last_column_id = column_id
             self.hide_tooltip()
 
-            if row_id and column_id == '#10':  # '#10' это индекс колонки 'comment'
-                comment_text = self.widget.item(row_id, 'values')[9]
-                self.show_tooltip(event, comment_text)
+            # Получаем имя колонки по column_id (например "#3" → "comment")
+            try:
+                col_index = int(column_id.replace('#', '')) - 1
+                col_name = self.widget["columns"][col_index]
+            except (ValueError, IndexError):
+                col_name = None
+
+            # Проверяем, это ли колонка "comment"
+            if row_id and col_name == "comment":
+                comment_text = self.widget.set(row_id, col_name)
+                if comment_text:  # показываем только если есть текст
+                    self.show_tooltip(event, comment_text)
 
     def show_tooltip(self, event, text):
         if self.tooltip_window is not None:
@@ -1333,7 +1395,7 @@ class Tooltip:
             self.tooltip_window.destroy()
             self.tooltip_window = None
 
-# ====ВЫЗОВ ФУНКЦИЙ КНОПОК РЕДАКТИРОВАНИЯ==================================================================
+# ====ВЫЗОВ ФУНКЦИЙ МЕНЮ РЕДАКТИРОВАНИЯ==================================================================
 class Edit(tk.Toplevel):
     def __init__(self, rows):
         self.rows = rows
@@ -1373,12 +1435,14 @@ class Edit(tk.Toplevel):
         label_type_lift.place(x=20, y=170)
         label_stop = tk.Label(self, text='Причина остановки:', font=font12)
         label_stop.place(x=20, y=200)
-        label_fio_meh = tk.Label(self, text='ФИО механика:', font=font12)
+        label_fio_meh = tk.Label(self, text='Принял:', font=font12)
         label_fio_meh.place(x=20, y=230)
+        label_fio_meh = tk.Label(self, text='Исполнил:', font=font12)
+        label_fio_meh.place(x=20, y=260)
         label_data2 = tk.Label(self, text='Дата устранения:', font=font12)
-        label_data2.place(x=20, y=260)
+        label_data2.place(x=20, y=290)
         label_comment = tk.Label(self, text='Комментарий:', font=font12)
-        label_comment.place(x=20, y=290)
+        label_comment.place(x=20, y=320)
 #===============================================================================================
         self.text_entry_data = tk.StringVar(value=self.rows[0]['Дата_заявки'])
         self.calen1 = tk.Entry(self, textvariable=self.text_entry_data, font=font10)
@@ -1471,23 +1535,36 @@ class Edit(tk.Toplevel):
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.meh_to_id = {i['ФИО']: i['id'] for i in read}
         meh = [i['ФИО'] for i in read]
-        m1 = [j for j in meh]
-        m1.insert(0, self.rows[0]['ФИО'])
-        self.combobox_meh = ttk.Combobox(self, values=list(dict.fromkeys(m1)), font=font10, state='readonly')
+        meh.insert(0, self.rows[0]['Принял'])
+        self.combobox_meh = ttk.Combobox(self, values=list(dict.fromkeys(meh)), font=font10, state='readonly')
         self.combobox_meh.current(0)
         self.combobox_meh.place(x=200, y=230)
+# ==============================================================================================
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"select ФИО, id from {self.workers} where Должность = 'Механик' order by ФИО")
+                read = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+        self.ispolnitel_to_id = {i['ФИО']: i['id'] for i in read}
+        ispolnitel = [i['ФИО'] for i in read]
+        ispolnitel.insert(0, self.rows[0]['Исполнил'])
+        self.combobox_ispolnitel = ttk.Combobox(self, values=list(dict.fromkeys(ispolnitel)), font=font10, state='readonly')
+        self.combobox_ispolnitel.current(0)
+        self.combobox_ispolnitel.place(x=200, y=260)
 #====================================================================================
         self.text_entry_zapusk = tk.StringVar(value=self.rows[0]['дата_запуска'])
         self.calen2 = tk.Entry(self, textvariable=self.text_entry_zapusk, font=font10)
-        self.calen2.place(x=200, y=260)
+        self.calen2.place(x=200, y=290)
 #=======================================================================================
         self.text_entry_comment = tk.StringVar(value=self.rows[0]['комментарий'])
         self.entry_comment = tk.Entry(self, textvariable=self.text_entry_comment, font=font10)
-        self.entry_comment.place(x=200, y=290)
+        self.entry_comment.place(x=200, y=320)
         btn_cancel = ttk.Button(self, text='Отменить', command=self.destroy)
-        btn_cancel.place(x=300, y=350)
+        btn_cancel.place(x=300, y=380)
         self.btn_ok = ttk.Button(self, text='Сохранить', command=self.save_and_close)
-        self.btn_ok.place(x=200, y=350)
+        self.btn_ok.place(x=200, y=380)
 
     def get_street_after_change_town(self, town, street=None, home=None, entrance=None, elevator=None):
         """
@@ -1601,10 +1678,6 @@ class Edit(tk.Toplevel):
             lift_name = self.combobox_lift.get()
             self.all_id_address = self.get_all_id_address(town_name.strip(), street_name.strip(), home_name.strip(),
                                                      padik_name.strip(), lift_name.strip())
-
-            # selected_street_id = self.street_to_id.get(street)
-            # selected_house_id = self.house_to_id.get(house.strip())
-            # selected_padik_id = self.padik_to_id.get(padik.strip())
             return self.all_id_address
 
     def get_all_id_address(self, town, street, home, entrance, lift):
@@ -1630,12 +1703,18 @@ class Edit(tk.Toplevel):
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
-
-
     def get_selected_meh_id(self):
         selected_meh_fio = self.combobox_meh.get()
         selected_meh_id = self.meh_to_id.get(selected_meh_fio)
         return selected_meh_id
+
+    def get_selected_ispolnitel_id(self):
+        selected_ispolnitel_fio = self.combobox_ispolnitel.get()
+        selected_ispolnitel_id = self.ispolnitel_to_id.get(selected_ispolnitel_fio)
+        if selected_ispolnitel_id == 'None':
+            return None
+        else:
+            return selected_ispolnitel_id
 
     def save_and_close(self):
         if self.get_selected_adres_id() == 'ВЫБРАТЬ АДРЕС' or self.selected_type.get() == 'ВЫБРАТЬ ЛИФТ':
@@ -1648,19 +1727,13 @@ class Edit(tk.Toplevel):
             mb.showerror("Ошибка", "Вы не выбрали ФИО механика")
             self.grab_release()  # Разрешаем доступ к другим окнам
             return
-        self.view.update_record(
-            self.calen1.get(),
-            self.get_selected_dispetcher_id(),
-            self.all_id_address[0]['goroda_id'],
-            self.all_id_address[0]['street_id'],
-            self.all_id_address[0]['home_id'],
-            self.all_id_address[0]['padik_id'],
-            self.combobox_lift.get(),
-            self.all_id_address[0]['lifts_id'],
-            self.combobox_stop.get(),
-            self.get_selected_meh_id(),
-            self.calen2.get(),
-            self.entry_comment.get(), self.destroy())
+
+        # Проверяем, изменились ли данные
+        if not self.is_data_changed():
+            self.destroy()  # Просто закрываем окно, если ничего не изменилось
+            return
+
+        self.view.update_record(self.get_all_values(), self.destroy())
 
 class Search(tk.Toplevel):
     def __init__(self):
@@ -1823,9 +1896,6 @@ class Search(tk.Toplevel):
 
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-    def on_select_city(self, *args):
-        selected_city = self.value_city.get()
 
     def on_select_city(self, *args):
         self.selected_city = self.value_city.get()

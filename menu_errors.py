@@ -37,7 +37,7 @@ class Menu_errors:
     def add_editing_menu(self, menu):
         menu.add_command(label="Копировать заявку", command=self.clipboard)
         menu.add_command(label="Редактировать", command=lambda: self.edit("Редактировать"))
-        menu.add_command(label="Отметить время", command=lambda: self.time_to("Отметить время"))
+        menu.add_command(label="Отметить время/исполнителя", command=lambda: self.time_to("Отметить время"))
         menu.add_command(label="Комментировать", command=lambda: self.open_comment("Комментировать"))
         menu.add_separator()
 
