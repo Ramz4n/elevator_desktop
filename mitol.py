@@ -1620,7 +1620,7 @@ class Edit(tk.Toplevel):
                     JOIN {self.lifts} ON {self.doma}.id = {self.lifts}.id_дом
                     JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
                     WHERE {self.goroda}.город = "{self.combobox_town.get()}"
-                    group BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`
+                    group BY {self.street}.Улица, {self.doma}.Номер, {self.padik}.Номер
                     order by {self.street}.улица, {self.doma}.номер, {self.padik}.номер''')
                 self.adreses = cursor.fetchall()
         except mariadb.Error as e:
@@ -1692,8 +1692,8 @@ class Edit(tk.Toplevel):
                       JOIN doma ON street.id = doma.id_улица
                       JOIN lifts ON doma.id = lifts.id_дом
                       JOIN padik ON lifts.id_подъезд = padik.id
-                      WHERE goroda.город = ? AND street.`Улица`= ?
-                      AND doma.`Номер`= ? AND padik.`Номер`= ? AND lifts.`Тип_лифта`= ?
+                      WHERE goroda.город = ? AND street.Улица= ?
+                      AND doma.Номер= ? AND padik.Номер= ? AND lifts.Тип_лифта= ?
                     ''', (town, street, home, entrance, lift),)
                 data_all_id_address = cursor.fetchall()
             return data_all_id_address
@@ -1945,8 +1945,8 @@ class Search(tk.Toplevel):
                         JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
                         JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
                         WHERE {self.goroda}.Город = '{self.selected_city}' AND {self.doma}.is_active = 1
-                        group BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`
-						ORDER BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер''')
+                        group BY {self.street}.Улица, {self.doma}.Номер, {self.padik}.Номер
+						ORDER BY {self.street}.Улица, {self.doma}.Номер, {self.padik}.Номер''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"
@@ -1971,8 +1971,8 @@ class Search(tk.Toplevel):
                         JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
                         JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
                         WHERE {self.goroda}.Город = '{self.selected_city}'
-                        group BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер`
-						ORDER BY {self.street}.`Улица`, {self.doma}.`Номер`, {self.padik}.`Номер''')
+                        group BY {self.street}.Улица, {self.doma}.Номер, {self.padik}.Номер
+						ORDER BY {self.street}.Улица, {self.doma}.Номер, {self.padik}.Номер''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"  # Парсим адреса из файла
