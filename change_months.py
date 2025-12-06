@@ -54,7 +54,8 @@ class Change_months():
                    CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
                    тип_лифта,
                    причина,
-                   m.ФИО,
+                   m1.ФИО as Принял,
+                   m2.ФИО as Исполнил,
                    FROM_UNIXTIME(дата_запуска, '%d.%m.%y, %H:%i') AS Дата_запуска,
                    комментарий,
                    z.id
@@ -64,7 +65,8 @@ class Change_months():
             JOIN {self.table_street} s ON z.id_улица = s.id
             JOIN {self.table_doma} d ON z.id_дом = d.id
             JOIN {self.table_padik} p ON z.id_подъезд = p.id
-            JOIN {self.table_workers} m ON z.id_механик = m.id
+            JOIN {self.table_workers} m1 ON z.id_механик = m1.id
+            LEFT JOIN {self.table_workers} m2 ON z.id_исполнитель = m2.id
         '''
         query = self.add_filter_to_query(base_query, type_button)
         query += self.add_date_and_order_to_query()
