@@ -31,6 +31,7 @@ class Main(tk.Frame):
         m.add_cascade(label="МЕНЮ", menu=fm)
         fm.add_command(label="Открыть в экселе", command=self.open_bd_to_excel)
         fm.add_command(label="Дневная статистика", command=self.afternoon_statistic)
+        fm.add_command(label="Остановки более суток", command=self.stop_more_1day)
         # =======1 ОСНОВНОЙ TOOLBAR====================================================================
         toolbar_general = tk.Frame(borderwidth=1, relief="raised")
         toolbar_general.pack(side=tk.TOP, fill=tk.X)
@@ -468,6 +469,61 @@ class Main(tk.Frame):
             self.afternoon_statistic_window = Afternoon_statistic(self, self.db_manager, self.enabled.get())
         else:
             self.afternoon_statistic_window.show()
+
+    def stop_more_1day(self):
+        try:
+            now = datetime.datetime.now()
+
+            # определяем предыдущий месяц и год
+            if now.month == 1:
+                report_month = 12
+                report_year = now.year - 1
+            else:
+                report_month = now.month - 1
+                report_year = now.year
+
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor()
+
+                sql_query = f"""
+                    SELECT
+                        z.Номер_заявки,
+                        FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                        g.город AS Город,
+                        CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                        z.Тип_лифта AS Тип_лифта,
+                        FROM_UNIXTIME(z.Дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                        z.Комментарий AS Комментарий
+                    FROM {self.zayavki} z
+                    JOIN {self.workers} di ON z.id_Диспетчер = di.id
+                    JOIN {self.goroda} g ON z.id_город = g.id
+                    JOIN {self.street} s ON z.id_улица = s.id
+                    JOIN {self.doma} d ON z.id_дом = d.id
+                    JOIN {self.padik} p ON z.id_подъезд = p.id
+                    JOIN {self.workers} m ON z.id_Механик = m.id
+                    WHERE z.pc_id IS NOT NULL
+                      AND z.Причина = 'Остановлен'
+                      AND MONTH(FROM_UNIXTIME(z.Дата_заявки)) = {report_month}
+                      AND YEAR(FROM_UNIXTIME(z.Дата_заявки)) = {report_year}
+                      AND ((z.Дата_запуска - z.Дата_заявки) > 86400 OR z.Дата_запуска IS NULL)
+                    ORDER BY z.Дата_заявки
+                """
+
+                cursor.execute(sql_query)
+                data = cursor.fetchall()
+
+                if not data:
+                    mb.showinfo(
+                        "Информация",
+                        f"Нет данных за {report_month:02d}.{report_year}"
+                    )
+                    return
+
+                df = pd.DataFrame(data, columns=[i[0] for i in cursor.description])
+                Excel(df)
+
+        except Exception as e:
+            mb.showerror("Ошибка", f"Ошибка при выгрузке в Excel:\n{e}")
 
     def _on_mousewheel(self, event):
         self.canvas_city.yview_scroll(int(-1 * (event.delta / 120)), "units")
