@@ -25,6 +25,10 @@ class Change_months():
     def change_months(self):
         type_button = self.session
         if type_button in ('all', 'line_close', 'started'):
+            self.tree.tag_configure("Green.Treeview", foreground="#06B206")
+            self.tree.tag_configure("Red.Treeview", foreground="red")
+            self.tree.tag_configure("Blue.Treeview", foreground="#1437FF")
+            self.tree.tag_configure("Violet.Treeview", foreground="#7B00B4")
             self.update_month_index()
             query = self.build_query(type_button)
             self.execute_query(query)
@@ -93,7 +97,7 @@ class Change_months():
         try:
             # Создаем новое соединение для выполнения запроса
             with closing(self.db_manager.connect()) as connection:
-                cursor = connection.cursor()
+                cursor = connection.cursor(dictionary=True)
                 cursor.execute(query)
                 self.update_treeview(cursor.fetchall())
                 connection.commit()
@@ -109,16 +113,19 @@ class Change_months():
             self.insert_row_into_treeview(row)
 
     def insert_row_into_treeview(self, row):
-        if row[-3] is None and row[-5] == 'Остановлен':
-            self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
-        elif row[-3] is None and row[-5] in ('Неисправность', 'Застревание'):
-            self.tree.insert('', 'end', values=tuple(row), tags=('Blue.Treeview',))
-        elif row[-3] is not None and row[-5] == 'Остановлен':
-            self.tree.insert('', 'end', values=tuple(row), tags=('Green.Treeview',))
-        elif row[-3] is not None and row[-5] == 'Линейная':
-            self.tree.insert('', 'end', values=tuple(row), tags=('Violet.Treeview',))
+        # заменяем None -> ""
+        row = {k: ("" if v is None else v) for k, v in row.items()}
+
+        if not row["Дата_запуска"] and row["причина"] == 'Остановлен':
+            self.tree.insert('', 'end', values=tuple(row.values()), tags=('Red.Treeview',))
+        elif not row["Дата_запуска"] and row["причина"] in ('Неисправность', 'Застревание'):
+            self.tree.insert('', 'end', values=tuple(row.values()), tags=('Blue.Treeview',))
+        elif row["Дата_запуска"] and row["причина"] == 'Остановлен':
+            self.tree.insert('', 'end', values=tuple(row.values()), tags=('Green.Treeview',))
+        elif row["Дата_запуска"] and row["причина"] == 'Линейная':
+            self.tree.insert('', 'end', values=tuple(row.values()), tags=('Violet.Treeview',))
         else:
-            self.tree.insert('', 'end', values=tuple(row))
+            self.tree.insert('', 'end', values=tuple(row.values()))
 
     def show_error_message(self):
         msg = "Этот раздел уже имеет все месяцы с заявками"

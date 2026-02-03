@@ -14,8 +14,14 @@ class Choose_ispolnitel(tk.Toplevel):
         self.title("Выбор исполнителя")
         self.geometry("300x400+500+200")
         self.resizable(False, False)
-        # self.bind('<Unmap>', self.on_unmap)
+        self.attributes('-toolwindow', True)
+        self.attributes('-topmost', True)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+
+        # Делаем окно модальным
+        self.transient(self.master)
+        self.grab_set()
+        self.focus_set()
 
         # Поле ввода для поиска
         tk.Label(self, text="Выберите исполнителя из списка:").pack(pady=5)
@@ -36,7 +42,7 @@ class Choose_ispolnitel(tk.Toplevel):
         self.selected_mechanic = None
 
     def on_close(self):
-        if messagebox.askyesno("Подтверждение", "Закрыть без выбора?"):
+        if messagebox.askyesno("Подтверждение", "Отметить время без выбора исполнителя?", parent=self):
             self.selected_mechanic = None  # Сбрасываем выбор
             self.destroy()  # Закрываем окно
 

@@ -407,7 +407,7 @@ class Main(tk.Frame):
         return win.selected_mechanic
 
     def change_months(self, direction):
-        print(f"Смена месяца: {direction}")  # заглушка для логики смены месяца
+        print(f"Смена месяца: {direction}")  # заглушка для логики смены месяца\месяц меняется в файле change_months
 
     def label_center_switch_name(self, name, color):
         self.label_center.configure(text=f'{name}', bg=f'{color}')
