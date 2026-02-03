@@ -41,13 +41,11 @@ class Change_months():
             self.month_label.config(text=self.list_months[self.month_index])
             if self.month_index == 0:
                 self.year_index = (self.year_index + 1) % 100
-                self.year_label.config(text=self.year_index)
         elif self.text == "backward":
             self.month_index = (self.month_index - 1) % 12
             self.month_label.config(text=self.list_months[self.month_index])
             if self.month_index == 11:
                 self.year_index = (self.year_index - 1) % 100
-                self.year_label.config(text=self.year_index)
 
     def build_query(self, type_button):
         base_query = f'''

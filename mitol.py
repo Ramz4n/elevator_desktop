@@ -32,6 +32,7 @@ class Main(tk.Frame):
         fm.add_command(label="Открыть в экселе", command=self.open_bd_to_excel)
         fm.add_command(label="Дневная статистика", command=self.afternoon_statistic)
         fm.add_command(label="Остановки более суток", command=self.stop_more_1day)
+        fm.add_command(label="Выделить все заявки", command=self.select_all_zayavki)
         # =======1 ОСНОВНОЙ TOOLBAR====================================================================
         toolbar_general = tk.Frame(borderwidth=1, relief="raised")
         toolbar_general.pack(side=tk.TOP, fill=tk.X)
@@ -275,8 +276,6 @@ class Main(tk.Frame):
         btn_stop.pack(side=tk.TOP)
         btn_open_ = tk.Button(general_tool_button, text='Незакрытые заявки', bg='#4897FF', compound=tk.TOP, command=lambda: self.event_of_button('open'), width=19, font=helv36)
         btn_open_.pack(side=tk.TOP)
-        btn_start = tk.Button(general_tool_button, text='Запущенные лифты', bg='#00AD0E', compound=tk.TOP, command=lambda: self.event_of_button('started'), width=19, font=helv36)
-        btn_start.pack(side=tk.TOP)
         #=====================================================================================
         self.is_on = True
         self.enabled = IntVar()
@@ -290,10 +289,8 @@ class Main(tk.Frame):
         self.off = PhotoImage(file="off.png")
         self.on_button = Button(general_tool_button, image=self.off, bd=0, command=self.switch)
         self.on_button.pack()
-        btn_lineyka_close = tk.Button(general_tool_button, text='Линейные закрытые', compound=tk.TOP,
-                              command=lambda: self.event_of_button('line_close'), width=19, font=helv36, bg='#BE81FF')
-        btn_lineyka_close.pack(side=tk.TOP)
-        btn_lineyka_open = tk.Button(general_tool_button, text='Линейные открытые', compound=tk.TOP,
+
+        btn_lineyka_open = tk.Button(general_tool_button, text='Линейные', compound=tk.TOP,
                                 command=lambda: self.event_of_button('line_open'), width=19, font=helv36)
         btn_lineyka_open.pack(side=tk.TOP)
         btn_svyaz = tk.Button(general_tool_button, text='Связь', compound=tk.TOP,
@@ -312,10 +309,16 @@ class Main(tk.Frame):
 
         # Слева: entry_num_zayavki - поиск по номеру заявки
         self.values_num_zayavki = tk.Variable()
-        self.entry_num_zayavki = tk.Entry(toolbar_btn_month, width=5, font=('Helvetica', 14), textvariable=self.values_num_zayavki)
+        self.entry_num_zayavki = tk.Entry(toolbar_btn_month, width=8, font=('Helvetica', 11), textvariable=self.values_num_zayavki, fg='gray')
         self.entry_num_zayavki.pack(side='left', padx=1)
-        btn_num_zayavki = tk.Button(toolbar_btn_month, text='🔍', compound=tk.TOP,
-                                     command=lambda: self.event_of_button('num'), width=3, font=helv36)
+
+        # Добавляем placeholder
+        self.values_num_zayavki.set("№ заявки")
+        self.entry_num_zayavki.bind("<FocusIn>", self.on_entry_num_focus_in)
+        self.entry_num_zayavki.bind("<FocusOut>", self.on_entry_num_focus_out)
+
+        btn_num_zayavki = tk.Button(toolbar_btn_month, text='🔍Поиск', compound=tk.TOP,
+                                     command=lambda: self.event_of_button('num'), width=7, font=('Helvetica', 8))
         btn_num_zayavki.pack(side='left')
 
         # Центр: отдельный фрейм для кнопок и меток
@@ -340,6 +343,23 @@ class Main(tk.Frame):
                                         command=lambda: self.change_months("forward"), width=19, font='helv36')
         btn_refresh_forward.grid(row=0, column=3, padx=5)
 
+        # Toggle переключатель для фильтрации по дате запуска
+        self.toggle_with_time = tk.BooleanVar(value=False)
+        toggle_frame = tk.Frame(center_frame)
+        toggle_frame.grid(row=0, column=4, padx=20)
+
+        self.toggle_label = tk.Label(toggle_frame, text="Открытые\nзаявки", font='Calibri 12 bold', fg='red', justify='center')
+        self.toggle_label.pack(side='left', padx=5)
+
+        # Создаем canvas для рисования переключателя
+        self.toggle_canvas = tk.Canvas(toggle_frame, width=60, height=30, bg='white', highlightthickness=1, highlightbackground='gray')
+        self.toggle_canvas.pack(side='left')
+
+        # Рисуем переключатель
+        self.toggle_bg = self.toggle_canvas.create_rectangle(5, 5, 55, 25, fill='#cccccc', outline='')
+        self.toggle_button = self.toggle_canvas.create_oval(8, 8, 28, 28, fill='white', outline='')
+
+        self.toggle_canvas.bind('<Button-1>', self.toggle_switch)
 
         # =======ВИЗУАЛ БАЗЫ ДАННЫХ =========================================================================
         style = ttk.Style()
@@ -524,6 +544,49 @@ class Main(tk.Frame):
 
         except Exception as e:
             mb.showerror("Ошибка", f"Ошибка при выгрузке в Excel:\n{e}")
+
+    def select_all_zayavki(self):
+        """Выделяет все заявки в treeview"""
+        all_items = self.tree.get_children()
+        self.tree.selection_set(all_items)
+
+    def on_entry_num_focus_in(self, event):
+        """Убирает placeholder при фокусе на поле"""
+        if self.values_num_zayavki.get() == "№ заявки":
+            self.values_num_zayavki.set("")
+            self.entry_num_zayavki.config(fg='black')
+
+    def on_entry_num_focus_out(self, event):
+        """Возвращает placeholder если поле пустое"""
+        if not self.values_num_zayavki.get().strip():
+            self.values_num_zayavki.set("№ заявки")
+            self.entry_num_zayavki.config(fg='gray')
+
+    def reset_entry_num_placeholder(self):
+        """Сбрасывает поле номера заявки на placeholder"""
+        self.values_num_zayavki.set("№ заявки")
+        self.entry_num_zayavki.config(fg='gray')
+
+    def toggle_switch(self, event=None):
+        """Переключает toggle и обновляет отображение"""
+        current = self.toggle_with_time.get()
+        self.toggle_with_time.set(not current)
+
+        if self.toggle_with_time.get():
+            # Включено - показываем закрытые заявки (с датой запуска)
+            self.toggle_canvas.itemconfig(self.toggle_bg, fill='#4CAF50')
+            self.toggle_canvas.coords(self.toggle_button, 32, 8, 52, 28)
+            self.toggle_label.config(text="Закрытые\nзаявки", fg='green')
+        else:
+            # Выключено - показываем открытые заявки (без даты запуска)
+            self.toggle_canvas.itemconfig(self.toggle_bg, fill='#cccccc')
+            self.toggle_canvas.coords(self.toggle_button, 8, 8, 28, 28)
+            self.toggle_label.config(text="Открытые\nзаявки", fg='red')
+
+        # Обновляем текущий вид
+        current_type = self.session.get("type_button")
+        if current_type:
+            self.event_of_button(current_type)
 
     def _on_mousewheel(self, event):
         self.canvas_city.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -796,52 +859,55 @@ class Main(tk.Frame):
                     self.session.set("type_button", "all")
                     query += ' WHERE NOT z.Причина in ("Линейная", "Связь")'
                     query += end
-                    self.entry_num_zayavki.delete(0, tk.END)
+                    self.reset_entry_num_placeholder()
                 elif type_button == 'stopped':
                     self.session.delete("type_button")
                     self.session.set("type_button", "stopped")
-                    query += ' WHERE Причина="Остановлен" AND Дата_запуска is Null'
+                    if self.toggle_with_time.get():
+                        query += ' WHERE Причина="Остановлен" AND Дата_запуска is not Null'
+                    else:
+                        query += ' WHERE Причина="Остановлен" AND Дата_запуска is Null'
                     query += order
-                    self.entry_num_zayavki.delete(0, tk.END)
+                    self.reset_entry_num_placeholder()
                 elif type_button == 'open':
                     self.session.delete("type_button")
                     self.session.set("type_button", "open")
-                    query += ' WHERE Дата_запуска is Null AND not Причина IN ("Остановлен", "Линейная", "Связь", "УК")'
+                    if self.toggle_with_time.get():
+                        query += ' WHERE Дата_запуска is not Null AND not Причина IN ("Остановлен", "Линейная", "Связь", "УК")'
+                    else:
+                        query += ' WHERE Дата_запуска is Null AND not Причина IN ("Остановлен", "Линейная", "Связь", "УК")'
                     query += order
-                    self.entry_num_zayavki.delete(0, tk.END)
+                    self.reset_entry_num_placeholder()
                 elif type_button == 'line_open':
                     self.session.delete("type_button")
                     self.session.set("type_button", "line_open")
-                    query += ' WHERE Дата_запуска is Null AND Причина IN ("Линейная", "Т.О.")'
+                    if self.toggle_with_time.get():
+                        query += ' WHERE Дата_запуска is not Null AND Причина IN ("Линейная", "Т.О.")'
+                    else:
+                        query += ' WHERE Дата_запуска is Null AND Причина IN ("Линейная", "Т.О.")'
                     query += order
-                    self.entry_num_zayavki.delete(0, tk.END)
-                elif type_button == 'line_close':
-                    self.session.delete("type_button")
-                    self.session.set("type_button", "line_close")
-                    query += ' WHERE Дата_запуска > 100 AND Причина IN ("Линейная", "Т.О.")'
-                    query += end
-                    self.entry_num_zayavki.delete(0, tk.END)
-                elif type_button == 'started':
-                    self.session.delete("type_button")
-                    self.session.set("type_button", "started")
-                    query += ' where Причина="Остановлен" AND Дата_запуска is not Null'
-                    query += end
-                    self.entry_num_zayavki.delete(0, tk.END)
+                    self.reset_entry_num_placeholder()
                 elif type_button == 'svyaz':
                     self.session.delete("type_button")
                     self.session.set("type_button", "svyaz")
-                    query += ' where Причина="Связь" AND Дата_запуска is Null'
+                    if self.toggle_with_time.get():
+                        query += ' where Причина="Связь" AND Дата_запуска is not Null'
+                    else:
+                        query += ' where Причина="Связь" AND Дата_запуска is Null'
                     query += order
-                    self.entry_num_zayavki.delete(0, tk.END)
+                    self.reset_entry_num_placeholder()
                 elif type_button == 'uk':
                     self.session.delete("type_button")
                     self.session.set("type_button", "uk")
-                    query += ' where Причина="УК" AND Дата_запуска is Null'
+                    if self.toggle_with_time.get():
+                        query += ' where Причина="УК" AND Дата_запуска is not Null'
+                    else:
+                        query += ' where Причина="УК" AND Дата_запуска is Null'
                     query += order
-                    self.entry_num_zayavki.delete(0, tk.END)
+                    self.reset_entry_num_placeholder()
                 elif type_button == 'num':
                     value = self.values_num_zayavki.get()
-                    if not value.strip():
+                    if not value.strip() or value == "№ заявки":
                         self.session.delete("type_button")
                         self.session.set("type_button", "all")
                         query += ' WHERE NOT z.Причина in ("Линейная", "Связь")'
@@ -852,7 +918,7 @@ class Main(tk.Frame):
                         query += f' where z.Номер_заявки = {value}'
                         query += order
                 elif type_button == 'search':
-                    self.entry_num_zayavki.delete(0, tk.END)
+                    self.reset_entry_num_placeholder()
                     self.session.delete("type_button")
                     self.session.set("type_button", "search")
                     if address:
@@ -1466,12 +1532,43 @@ class Edit(tk.Toplevel):
         self.view = app
 
     def init_edit(self):
+        # Создаем затемняющий оверлей
+        self.overlay = tk.Toplevel(root)
+        self.overlay.attributes('-alpha', 0.8)
+        self.overlay.attributes('-topmost', True)
+        self.overlay.configure(bg='gray')
+
+        # Получаем размеры и позицию главного окна
+        root.update_idletasks()
+        main_x = root.winfo_x()
+        main_y = root.winfo_y()
+        main_width = root.winfo_width()
+        main_height = root.winfo_height()
+
+        # Размещаем оверлей поверх главного окна
+        self.overlay.geometry(f"{main_width}x{main_height}+{main_x}+{main_y}")
+        self.overlay.overrideredirect(True)
+
+        # Вычисляем центр главного окна
+        center_x = main_x + main_width // 2
+        center_y = main_y + main_height // 2
+
+        # Размеры окна редактирования
+        window_width = 500
+        window_height = 500
+
+        # Вычисляем позицию так, чтобы центр окна был в центре главного окна
+        pos_x = center_x - window_width // 2
+        pos_y = center_y - window_height // 2
+
         self.title('Редактировать')
-        self.geometry('500x500+0+0')
+        self.geometry(f'{window_width}x{window_height}+{pos_x}+{pos_y}')
         self.resizable(False, False)
         self.wm_attributes('-topmost', 1)
+        self.transient(self.overlay)
 
         self.bind('<Unmap>', self.on_unmap)
+        self.protocol("WM_DELETE_WINDOW", self.on_close_with_overlay)
 
         font10 = tkFont.Font(family='Helvetica', size=10, weight=tkFont.BOLD)
         font12 = tkFont.Font(family='Helvetica', size=12, weight=tkFont.BOLD)
@@ -1614,7 +1711,7 @@ class Edit(tk.Toplevel):
         self.text_entry_comment = tk.StringVar(value=self.rows[0]['комментарий'])
         self.entry_comment = tk.Entry(self, textvariable=self.text_entry_comment, font=font10)
         self.entry_comment.place(x=200, y=320)
-        btn_cancel = ttk.Button(self, text='Отменить', command=self.destroy)
+        btn_cancel = ttk.Button(self, text='Отменить', command=self.close_with_overlay)
         btn_cancel.place(x=300, y=380)
         self.btn_ok = ttk.Button(self, text='Сохранить', command=self.save_and_close)
         self.btn_ok.place(x=200, y=380)
@@ -1662,6 +1759,16 @@ class Edit(tk.Toplevel):
     def deiconify(self):
         if self.state() == 'iconic':
             self.state('normal')
+
+    def close_with_overlay(self):
+        """Закрывает окно вместе с оверлеем"""
+        if hasattr(self, 'overlay') and self.overlay.winfo_exists():
+            self.overlay.destroy()
+        self.destroy()
+
+    def on_close_with_overlay(self):
+        """Обработчик закрытия окна через крестик"""
+        self.close_with_overlay()
 
     def on_town_select(self, event):
         selected_town = self.combobox_town.get()
@@ -1805,7 +1912,7 @@ class Edit(tk.Toplevel):
 
         # Проверяем, изменились ли данные
         if not self.is_data_changed():
-            self.destroy()  # Просто закрываем окно, если ничего не изменилось
+            self.close_with_overlay()  # Просто закрываем окно, если ничего не изменилось
             return
 
         self.view.update_record(self.calen1.get(),
@@ -1821,7 +1928,7 @@ class Edit(tk.Toplevel):
                                 self.get_selected_ispolnitel_id(),
                                 self.calen2.get(),
                                 self.entry_comment.get(),
-                                self.destroy())
+                                self.close_with_overlay())
 
 class Search(tk.Toplevel):
     def __init__(self):
@@ -1839,11 +1946,42 @@ class Search(tk.Toplevel):
         self.view = app
 
     def init_search(self):
+        # Создаем затемняющий оверлей
+        self.overlay = tk.Toplevel(root)
+        self.overlay.attributes('-alpha', 0.8)
+        self.overlay.attributes('-topmost', True)
+        self.overlay.configure(bg='gray')
+
+        # Получаем размеры и позицию главного окна
+        root.update_idletasks()
+        main_x = root.winfo_x()
+        main_y = root.winfo_y()
+        main_width = root.winfo_width()
+        main_height = root.winfo_height()
+
+        # Размещаем оверлей поверх главного окна
+        self.overlay.geometry(f"{main_width}x{main_height}+{main_x}+{main_y}")
+        self.overlay.overrideredirect(True)
+
+        # Вычисляем центр главного окна
+        center_x = main_x + main_width // 2
+        center_y = main_y + main_height // 2
+
+        # Размеры окна поиска
+        window_width = 600
+        window_height = 400
+
+        # Вычисляем позицию так, чтобы центр окна был в центре главного окна
+        pos_x = center_x - window_width // 2
+        pos_y = center_y - window_height // 2
+
         self.title('Поиск')
-        self.geometry('600x400+400+300')
+        self.geometry(f'{window_width}x{window_height}+{pos_x}+{pos_y}')
         self.resizable(False, False)
         self.wm_attributes('-topmost', 1)
+        self.transient(self.overlay)
         self.bind('<Unmap>', self.on_unmap)
+        self.protocol("WM_DELETE_WINDOW", self.close_with_overlay)
 
         toolbar_city = tk.Frame(self, borderwidth=1, relief="raised")
         toolbar_city.pack(side=tk.LEFT, fill=tk.Y)
@@ -1968,12 +2106,12 @@ class Search(tk.Toplevel):
         toolbar7 = tk.Frame(toolbar6, borderwidth=1, relief="raised")
         toolbar7.pack(side=tk.BOTTOM, fill=tk.Y)
         # Создание и размещение кнопки "Закрыть" большого размера справа снизу
-        btn_cancel = ttk.Button(toolbar7, text='Закрыть', style="Red.TButton", command=self.destroy, width=20)
+        btn_cancel = ttk.Button(toolbar7, text='Закрыть', style="Red.TButton", command=self.close_with_overlay, width=20)
         btn_cancel.pack(side=tk.BOTTOM)  # Установить координаты, ширину и высоту
         # Создание и размещение кнопки "Поиск" большого размера слева снизу
-        btn_search = ttk.Button(toolbar7, text='Поиск', style="Green.TButton", command=self.destroy, width=20)
+        btn_search = ttk.Button(toolbar7, text='Поиск', style="Green.TButton", command=self.close_with_overlay, width=20)
         btn_search.pack(side=tk.BOTTOM)  # Установить координаты, ширину и высоту
-        btn_search.bind('<Button-1>', lambda event: (self.view.event_of_button('search', self.value_city, self.entry_for_address.get(), self.calendar1.get(), self.calendar2.get(), self.destroy())))
+        btn_search.bind('<Button-1>', lambda event: (self.view.event_of_button('search', self.value_city, self.entry_for_address.get(), self.calendar1.get(), self.calendar2.get(), self.close_with_overlay())))
 
     def on_unmap(self, event):
         self.deiconify()  # Отменяем сворачивание дочернего окна
@@ -1981,6 +2119,12 @@ class Search(tk.Toplevel):
     def deiconify(self):
         if self.state() == 'iconic':
             self.state('normal')
+
+    def close_with_overlay(self):
+        """Закрывает окно вместе с оверлеем"""
+        if hasattr(self, 'overlay') and self.overlay.winfo_exists():
+            self.overlay.destroy()
+        self.destroy()
 
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -2061,11 +2205,42 @@ class Comment(tk.Toplevel):
         self.is_recording = False
 
     def init_comm(self):
+        # Создаем затемняющий оверлей
+        self.overlay = tk.Toplevel(root)
+        self.overlay.attributes('-alpha', 0.8)
+        self.overlay.attributes('-topmost', True)
+        self.overlay.configure(bg='gray')
+
+        # Получаем размеры и позицию главного окна
+        root.update_idletasks()
+        main_x = root.winfo_x()
+        main_y = root.winfo_y()
+        main_width = root.winfo_width()
+        main_height = root.winfo_height()
+
+        # Размещаем оверлей поверх главного окна
+        self.overlay.geometry(f"{main_width}x{main_height}+{main_x}+{main_y}")
+        self.overlay.overrideredirect(True)
+
+        # Вычисляем центр главного окна
+        center_x = main_x + main_width // 2
+        center_y = main_y + main_height // 2
+
+        # Размеры окна комментария
+        window_width = 700
+        window_height = 400
+
+        # Вычисляем позицию так, чтобы центр окна был в центре главного окна
+        pos_x = center_x - window_width // 2
+        pos_y = center_y - window_height // 2
+
         self.title('Комментировать')
-        self.geometry('700x400+300+300')
+        self.geometry(f'{window_width}x{window_height}+{pos_x}+{pos_y}')
         self.resizable(False, False)
         self.wm_attributes('-topmost', 1)
+        self.transient(self.overlay)
         self.bind('<Unmap>', self.on_unmap)
+        self.protocol("WM_DELETE_WINDOW", self.close_with_overlay)
 
         self.t = Text(self, height=14, width=50, font=16)
         self.t.insert(tk.END, self.now[0])
@@ -2083,7 +2258,7 @@ class Comment(tk.Toplevel):
         self.instruction_label = ttk.Label(self, text='', wraplength=300)
         self.instruction_label.place(x=575, y=40)  # Положение метки под кнопкой
 
-        button_cancel = ttk.Button(self, text='Отменить', command=self.destroy, style="Red.TButton", width=30)
+        button_cancel = ttk.Button(self, text='Отменить', command=self.close_with_overlay, style="Red.TButton", width=30)
         button_cancel.place(x=300, y=340)
 
         button_search = ttk.Button(self, text='Сохранить', command=self.save_and_close, style="Green.TButton", width=30)
@@ -2094,6 +2269,16 @@ class Comment(tk.Toplevel):
 
     def on_unmap(self, event):
         self.deiconify()  # Отменяем сворачивание дочернего окна
+
+    def deiconify(self):
+        if self.state() == 'iconic':
+            self.state('normal')
+
+    def close_with_overlay(self):
+        """Закрывает окно вместе с оверлеем"""
+        if hasattr(self, 'overlay') and self.overlay.winfo_exists():
+            self.overlay.destroy()
+        self.destroy()
 
     def on_microfon_button_click(self):
         if self.is_recording:
@@ -2123,7 +2308,7 @@ class Comment(tk.Toplevel):
         self.is_recording = False
 
     def save_and_close(self):
-        self.view.comment(self.t.get("1.0", tk.END).strip(), self.destroy)
+        self.view.comment(self.t.get("1.0", tk.END).strip(), self.close_with_overlay)
 
 
     def paste_text(self, event=None):

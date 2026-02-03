@@ -11,6 +11,23 @@ class Choose_ispolnitel(tk.Toplevel):
         self.init_ispolnitel()
 
     def init_ispolnitel(self):
+        # Создаем затемняющий оверлей
+        self.overlay = tk.Toplevel(self.master)
+        self.overlay.attributes('-alpha', 0.8)  # Полупрозрачность
+        self.overlay.attributes('-topmost', True)
+        self.overlay.configure(bg='gray')
+
+        # Получаем размеры и позицию главного окна
+        self.master.update_idletasks()
+        x = self.master.winfo_x()
+        y = self.master.winfo_y()
+        width = self.master.winfo_width()
+        height = self.master.winfo_height()
+
+        # Размещаем оверлей поверх главного окна
+        self.overlay.geometry(f"{width}x{height}+{x}+{y}")
+        self.overlay.overrideredirect(True)  # Убираем рамку окна
+
         self.title("Выбор исполнителя")
         self.geometry("300x400+500+200")
         self.resizable(False, False)
@@ -19,7 +36,7 @@ class Choose_ispolnitel(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # Делаем окно модальным
-        self.transient(self.master)
+        self.transient(self.overlay)
         self.grab_set()
         self.focus_set()
 
@@ -44,6 +61,7 @@ class Choose_ispolnitel(tk.Toplevel):
     def on_close(self):
         if messagebox.askyesno("Подтверждение", "Отметить время без выбора исполнителя?", parent=self):
             self.selected_mechanic = None  # Сбрасываем выбор
+            self.overlay.destroy()  # Закрываем оверлей
             self.destroy()  # Закрываем окно
 
     # def on_unmap(self, event):
@@ -89,4 +107,5 @@ class Choose_ispolnitel(tk.Toplevel):
         index = self.listbox.curselection()
         if index:
             self.selected_mechanic = self.filtered_list[index[0]]
+            self.overlay.destroy()  # Закрываем оверлей
             self.destroy()  # Закрываем окно
