@@ -82,7 +82,7 @@ class Choose_ispolnitel(tk.Toplevel):
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(f"SELECT ФИО, id FROM workers "
-                               f"WHERE Должность = 'Механик' ORDER BY ФИО")
+                               f"WHERE Должность = 'Механик' AND is_active = 1 ORDER BY ФИО")
                 mechanics = cursor.fetchall()
         except Exception as e:
             tk.messagebox.showerror("Ошибка", f"Не удалось загрузить механиков:\n{e}")

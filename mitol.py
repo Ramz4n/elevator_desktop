@@ -33,6 +33,7 @@ class Main(tk.Frame):
         fm.add_command(label="Дневная статистика", command=self.afternoon_statistic)
         fm.add_command(label="Остановки более суток", command=self.stop_more_1day)
         fm.add_command(label="Выделить все заявки", command=self.select_all_zayavki)
+        fm.add_command(label="Сотрудники", command=self.open_workers_window)
         # =======1 ОСНОВНОЙ TOOLBAR====================================================================
         toolbar_general = tk.Frame(borderwidth=1, relief="raised")
         toolbar_general.pack(side=tk.TOP, fill=tk.X)
@@ -251,7 +252,7 @@ class Main(tk.Frame):
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
-                cursor.execute(f"select id, ФИО from {self.workers} where Должность = 'Механик' order by ФИО")
+                cursor.execute(f"select id, ФИО from {self.workers} where Должность = 'Механик' and is_active = 1 order by ФИО")
                 self.data_meh = cursor.fetchall()
             for d in self.data_meh:
                 self.data_meh_name = f"{d['ФИО']}"
@@ -491,6 +492,28 @@ class Main(tk.Frame):
             self.afternoon_statistic_window.show()
 
     def stop_more_1day(self):
+        """
+    Формирует и выгружает в Excel отчёт по лифтам, которые в прошлом месяце были остановлены более суток.
+    Используется как ежемесячная статистика по длительным простоям.
+    Args:
+        self: Экземпляр класса, в котором определена эта функция.
+    Process:
+        1. Определяет предыдущий месяц и год относительно текущей даты.
+        2. Делает запрос в БД: выбирает заявки с причиной "Остановлен" за прошлый месяц,
+           у которых разница между дата_запуска и дата_заявки превышает 86400 секунд (1 сутки),
+           либо дата_запуска IS NULL (лифт так и не был запущен).
+        3. Если данных нет — выводит информационное сообщение.
+        4. Если данные есть — передаёт их в класс Excel() для формирования и открытия файла.
+    Used Methods:
+        - self.db_manager.connect(): Подключается к базе данных.
+        - Excel(df): Открывает сформированный DataFrame в Excel.
+        - mb.showinfo(): Выводит сообщение если данных за месяц нет.
+        - mb.showerror(): Выводит сообщение при ошибке выполнения.
+    Note:
+        - Отчёт всегда строится за предыдущий календарный месяц, не за текущий.
+        - Лифты с дата_запуска IS NULL включаются в отчёт как незакрытые остановки.
+        - Фильтр pc_id IS NOT NULL исключает тестовые или некорректные записи.
+        """
         try:
             now = datetime.datetime.now()
 
@@ -656,13 +679,37 @@ class Main(tk.Frame):
 
     # ===ВСТАВКА ВРЕМЕНИ В БД=======================================================================
     def time_to(self, event):
+        """
+    Записывает дату и время устранения неисправности в БД при двойном клике на заявку.
+    Также позволяет назначить исполнителя, если время уже было проставлено ранее.
+    Args:
+        self: Экземпляр класса, в котором определена эта функция.
+        event: Событие двойного клика мыши по строке в Treeview.
+    Process:
+        1. Получает id выбранной заявки через get_last_column_value().
+        2. Делает запрос в БД: проверяет текущее состояние полей Дата_запуска и id_исполнитель.
+        3. Если время уже есть, а исполнитель не назначен — предлагает вставить исполнителя.
+        4. Если время и исполнитель уже есть — сообщает, что изменение возможно только через редактирование.
+        5. Если время не проставлено — открывает окно выбора исполнителя, фиксирует текущее время
+           и записывает Дата_запуска и id_исполнитель в БД.
+    Used Methods:
+        - self.get_last_column_value(): Возвращает id выбранной строки из Treeview.
+        - self.choose_ispolnitel(): Открывает окно выбора исполнителя, возвращает словарь с его данными.
+        - self.add_ispolnitel(): Записывает исполнителя в БД без изменения времени.
+        - self.event_of_button(): Обновляет отображение таблицы после изменений.
+        - self.show_temporary_message(): Показывает всплывающее уведомление об успехе.
+    Note:
+        - Время фиксируется в Unix-формате (timestamp) на момент вызова функции.
+        - Если исполнитель не выбран (окно закрыто) — id_исполнитель записывается как NULL.
+        - Для изменения уже проставленных данных используется раздел редактирования (class Edit).
+        """
         try:
             selected_id = self.get_last_column_value()
-        except:
+        except Exception:
             mb.showerror("Ошибка", "Строка не выбрана")
             return
 
-        # Проверяем, есть ли время запуска
+        # Проверяем текущее состояние заявки в БД
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor()
@@ -675,7 +722,7 @@ class Main(tk.Frame):
             showinfo("Информация", f"Ошибка при работе с базой данных: {e}")
             return
 
-        # === ЕСЛИ ВРЕМЯ УЖЕ ЕСТЬ ===
+        # Время есть, исполнитель не назначен — предлагаем добавить исполнителя
         if info and info[0] is not None and info[1] is None:
             answer = mb.askyesno("Внимание", "Время уже указано.\nВставить исполнителя?")
             if answer:
@@ -685,19 +732,16 @@ class Main(tk.Frame):
                     self.event_of_button(self.session.get("type_button"))
                     self.show_temporary_message("Информация", "Исполнитель добавлен!")
             return
+        # Время и исполнитель уже проставлены — только через редактирование
         elif info and info[0] is not None and info[1] is not None:
-            showinfo("Информация", f"Время и исполнитель уже отмечены. Для дальнейшего изменения зайдите в раздел редактирования!")
+            showinfo("Информация", "Время и исполнитель уже отмечены. Для дальнейшего изменения зайдите в раздел редактирования!")
             return
 
-        # Теперь ставим время
+        # Время не проставлено — выбираем исполнителя и фиксируем время
         try:
-            self.id_mechanic = self.choose_ispolnitel()
-            # Извлекаем id из словаря, если self.id_mechanic не None
-            id_ispolnitel = self.id_mechanic["id"] if self.id_mechanic else None
-
-            date_str = datetime.datetime.now().strftime("%d.%m.%y, %H:%M")
-            time_obj = datetime.datetime.strptime(date_str, time_format)
-            unix_time = int(time_obj.timestamp())
+            id_mechanic = self.choose_ispolnitel()
+            id_ispolnitel = id_mechanic["id"] if id_mechanic else None
+            unix_time = int(datetime.datetime.now().timestamp())
 
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor()
@@ -833,9 +877,45 @@ class Main(tk.Frame):
                    LEFT JOIN {self.workers} m2 ON z.id_исполнитель = m2.id'''
 
 
-    def event_of_button(self, type_button, town=None, address=None, calendar1=None, calendar2=None, callback=None):
-        self.current_month_index = int((datetime.datetime.now(tz=None)).strftime("%m")) - 1
-        self.current_year_index = int((datetime.datetime.now(tz=None)).strftime("%y"))
+    def event_of_button(self, type_button, address=None, calendar1=None, calendar2=None, callback=None):
+        """
+    Загружает и отображает заявки в Treeview в зависимости от нажатой кнопки фильтра.
+    Является основным методом обновления таблицы — вызывается как при нажатии кнопок,
+    так и после любых изменений данных (добавление, редактирование, закрытие заявки).
+    Args:
+        self: Экземпляр класса, в котором определена эта функция.
+        type_button: Строка, определяющая тип фильтра ('all', 'stopped', 'open',
+                     'line_open', 'svyaz', 'uk', 'num', 'search').
+        address: Адрес для фильтрации при поиске (используется только при type_button='search').
+        calendar1: Начальная дата диапазона поиска в формате '%d.%m.%y' (только для 'search').
+        calendar2: Конечная дата диапазона поиска в формате '%d.%m.%y' (только для 'search').
+        callback: Опциональная функция, вызываемая после успешной загрузки данных.
+    Process:
+        1. Обновляет метку текущего месяца и настраивает цветовые теги Treeview.
+        2. Формирует SQL-запрос через self.query() и добавляет к нему WHERE-условие
+           в зависимости от значения type_button.
+        3. Сохраняет активный тип фильтра в сессию для последующего восстановления вида.
+        4. Выполняет запрос, очищает Treeview и заполняет его полученными строками.
+        5. Раскрашивает строки по цветам в зависимости от причины и статуса заявки:
+           - Красный: Остановлен без даты запуска (лифт стоит).
+           - Синий: Неисправность или Застревание без даты запуска (открытая заявка).
+           - Зелёный: Остановлен с датой запуска (лифт запущен).
+           - Фиолетовый: Линейная с датой запуска (закрытая линейная).
+        6. Прокручивает таблицу вниз и вызывает callback если передан.
+    Used Methods:
+        - self.query(): Возвращает базовый SELECT-запрос для таблицы заявок.
+        - self.session.set/delete(): Сохраняет/сбрасывает активный тип фильтра в сессии.
+        - self.toggle_with_time.get(): Возвращает состояние переключателя открытые/закрытые.
+        - self.reset_entry_num_placeholder(): Сбрасывает поле поиска по номеру заявки.
+        - self.tree.insert(): Добавляет строку в Treeview с нужным цветовым тегом.
+    Note:
+        - Фильтр 'all' показывает заявки текущего месяца, исключая Линейные и Связь.
+        - Остальные фильтры показывают все заявки без ограничения по месяцу.
+        - None-значения из БД заменяются пустой строкой перед вставкой в Treeview.
+        """
+        now = datetime.datetime.now()
+        self.current_month_index = now.month - 1
+        self.current_year_index = int(now.strftime("%y"))
         self.month_label.config(text=self.months[self.current_month_index])
         self.tree.tag_configure("Green.Treeview", foreground="#06B206")
         self.tree.tag_configure("Red.Treeview", foreground="red")
@@ -932,7 +1012,8 @@ class Main(tk.Frame):
                     query += order
                 cursor.execute(query)
 
-                [self.tree.delete(i) for i in self.tree.get_children()]
+                for i in self.tree.get_children():
+                    self.tree.delete(i)
                 for row in cursor.fetchall():
                     # заменяем None -> ""
                     row = {k: ("" if v is None else v) for k, v in row.items()}
@@ -948,7 +1029,6 @@ class Main(tk.Frame):
                     else:
                         self.tree.insert('', 'end', values=tuple(row.values()))
 
-                connection.commit()
                 self.tree.yview_moveto(1.0)
                 if callback:
                     callback()
@@ -991,54 +1071,84 @@ class Main(tk.Frame):
 
     # ===РЕДАКТИРОВАНИЕ ДАННЫХ В БД===================================================================
     def update_record(self, data, dispetcher, town, street, house, padik, type_lift, lift_id, prichina, fio_meh, fio_ispolnitel, date_to_go, comment, callback):
+        """
+    Обновляет запись заявки в БД после редактирования через класс Edit.
+    Args:
+        self: Экземпляр класса, в котором определена эта функция.
+        data: Дата заявки в строковом формате '%d.%m.%y, %H:%M'.
+        dispetcher: id диспетчера.
+        town: id города.
+        street: id улицы.
+        house: id дома.
+        padik: id подъезда.
+        type_lift: Тип лифта (строка).
+        lift_id: id лифта.
+        prichina: Причина остановки (строка).
+        fio_meh: id механика (принял).
+        fio_ispolnitel: id исполнителя.
+        date_to_go: Дата устранения в строковом формате '%d.%m.%y, %H:%M' или пустая строка.
+        comment: Комментарий (строка).
+        callback: Функция обратного вызова, вызывается после успешного сохранения.
+    Process:
+        1. Преобразует дату заявки из строки в Unix timestamp.
+        2. Если дата устранения пустая — передаёт NULL, иначе преобразует в Unix timestamp.
+        3. При ошибке формата даты — выводит сообщение и прерывает выполнение.
+        4. Выполняет UPDATE в БД с новыми значениями всех полей заявки.
+        5. Обновляет Treeview и показывает уведомление об успехе, вызывает callback.
+    Used Methods:
+        - self.get_last_column_value(): Возвращает id редактируемой заявки из Treeview.
+        - self.event_of_button(): Обновляет таблицу после изменений.
+        - self.show_temporary_message(): Показывает всплывающее уведомление об успехе.
+    Note:
+        - Если UPDATE завершился с ошибкой БД — обновление интерфейса не происходит.
+        - Формат даты определяется глобальной переменной time_format.
+        """
+        err_msg = "Введите дату в формате ДД.ММ.ГГГГ, ЧЧ:ММ или нажмите на нужную заявку, а потом на кнопку 'Отметить время'"
         try:
             date_object = datetime.datetime.strptime(data, time_format)
-            if date_to_go == None or date_to_go == '':
-                date_to_go = None
-                self.value_to_edit = (int(date_object.timestamp()),
+            if date_to_go is None or date_to_go == '':
+                value_to_edit = (int(date_object.timestamp()),
                         dispetcher, town, street, house,
                         padik, type_lift, prichina, fio_meh, fio_ispolnitel,
-                        date_to_go, comment, lift_id, self.get_last_column_value())
+                        None, comment, lift_id, self.get_last_column_value())
             else:
                 try:
                     date_object2 = datetime.datetime.strptime(date_to_go, time_format)
-                    self.value_to_edit = (int(date_object.timestamp()),
+                    value_to_edit = (int(date_object.timestamp()),
                             dispetcher, town, street, house,
                             padik, type_lift, prichina, fio_meh, fio_ispolnitel,
-                        int(date_object2.timestamp()), comment, lift_id, self.get_last_column_value())
+                            int(date_object2.timestamp()), comment, lift_id, self.get_last_column_value())
                 except ValueError:
-                    msg = "Введите дату в формате ДД.ММ.ГГГГ, ЧЧ:ММ или нажмите на нужную заявку, а потом на кнопку 'Отметить время'"
-                    mb.showerror("Ошибка", msg)
+                    mb.showerror("Ошибка", err_msg)
                     return
         except ValueError:
-            msg = "Введите дату в формате ДД.ММ.ГГГГ, ЧЧ:ММ или нажмите на нужную заявку, а потом на кнопку 'Отметить время'"
-            mb.showerror("Ошибка", msg)
+            mb.showerror("Ошибка", err_msg)
             return
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor()
-                cursor.execute(f'''UPDATE {self.zayavki} SET 
-                                        Дата_заявки = ?, 
-                                        id_Диспетчер = ?, 
-                                        id_город = ?, 
-                                        id_улица = ?, 
-                                        id_дом = ?, 
-                                        id_подъезд = ?, 
-                                        тип_лифта = ?, 
-                                        Причина = ?, 
-                                        id_Механик = ?, 
+                cursor.execute(f'''UPDATE {self.zayavki} SET
+                                        Дата_заявки = ?,
+                                        id_Диспетчер = ?,
+                                        id_город = ?,
+                                        id_улица = ?,
+                                        id_дом = ?,
+                                        id_подъезд = ?,
+                                        тип_лифта = ?,
+                                        Причина = ?,
+                                        id_Механик = ?,
                                         id_исполнитель = ?,
-                                        Дата_запуска = ?, 
+                                        Дата_запуска = ?,
                                         Комментарий = ?,
                                         id_лифт = ?
                                     WHERE ID = ?;''',
-                               self.value_to_edit)
+                               value_to_edit)
                 connection.commit()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.event_of_button(f'{self.session.get("type_button")}')
-        msg = f"Запись отредактирована!"
-        self.show_temporary_message('Информация', msg)
+            return
+        self.event_of_button(self.session.get("type_button"))
+        self.show_temporary_message('Информация', "Запись отредактирована!")
         if callback:
             callback()
 
@@ -1072,24 +1182,30 @@ class Main(tk.Frame):
         self.parsing_fio_into_listbox()
 
     def parsing_fio_into_listbox(self, _event=None):
-        '''
-        Парсинг ФИО из БД фамилий в listbox.
-        '''
+        """
+    Фильтрует список механиков в Listbox по введённому тексту в поле поиска.
+    Использует уже загруженные данные self.data_meh без повторного обращения к БД.
+    Args:
+        self: Экземпляр класса, в котором определена эта функция.
+        _event: Событие KeyRelease (не используется, нужен для совместимости с bind).
+    Process:
+        1. Получает текст из поля ввода ФИО механика и приводит к нижнему регистру.
+        2. Формирует список имён из self.data_meh (загружается при старте и при выборе).
+        3. Если поле пустое — показывает всех механиков.
+           Если введён текст — фильтрует по началу строки (startswith).
+        4. Обновляет Listbox отфильтрованным списком.
+    Note:
+        - Данные берутся из self.data_meh без запроса в БД при каждом нажатии клавиши.
+        - self.data_meh инициализируется при старте приложения и обновляется в on_change_selection_fio.
+        """
         selected_fio = self.entry_fio_meh.get().lower()
-        names = []
-        try:
-            with closing(self.db_manager.connect()) as connection:
-                cursor = connection.cursor(dictionary=True)
-                cursor.execute(f"select id, ФИО from {self.workers} where Должность = 'Механик' order by ФИО")
-                self.data_meh = cursor.fetchall()
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        for i in self.data_meh:
-            names.append(''.join(i['ФИО']))
+        if not hasattr(self, 'data_meh') or not self.data_meh:
+            return
+        names = [m['ФИО'] for m in self.data_meh]
         if selected_fio == '':
             self.values_listbox_fio_meh.set(names)
         else:
-            data_fio = [item7 for item7 in names if item7.lower().startswith(selected_fio)]
+            data_fio = [name for name in names if name.lower().startswith(selected_fio)]
             self.values_listbox_fio_meh.set(data_fio)
 
     def on_change_selection_fio(self, event):
@@ -1108,9 +1224,23 @@ class Main(tk.Frame):
             self.parsing_fio_into_listbox()
 
     def check_input_lifts(self, _event=None):
-        '''
-        ПАРСИНГ ТИПА ЛИФТОВ ИЗ СПИСКА ЛИФТОВ В ЛИСТБОКС.
-        '''
+        """
+    Загружает типы лифтов по выбранному адресу и фильтрует их в Listbox по введённому тексту.
+    Args:
+        self: Экземпляр класса, в котором определена эта функция.
+        _event: Событие KeyRelease (не используется, нужен для совместимости с bind).
+    Process:
+        1. Проверяет, что адрес выбран (self.data3 инициализирован).
+        2. Делает запрос в БД: получает типы лифтов по улице, дому и подъезду.
+        3. Если поле ввода пустое — показывает все типы.
+           Если введён текст — фильтрует по вхождению подстроки.
+        4. Обновляет Listbox через listbox_values_type.set().
+    Note:
+        - Очистка Listbox перед заполнением происходит через set() — дублей не будет.
+        - self.data3 устанавливается в on_change_selection_address при выборе адреса.
+        """
+        if not hasattr(self, 'data3') or not self.data3:
+            return
         selected_address = self.data3
         types = []
         street, home, entrance = selected_address.split(', ')
@@ -1124,29 +1254,22 @@ class Main(tk.Frame):
                                     JOIN {self.street} ON {self.doma}.id_улица = {self.street}.id
                                     JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
                                     WHERE {self.goroda}.город = "{self.selected_city}" AND {self.street}.улица = "{street}"
-                                    and {self.doma}.номер = "{home}" and {self.padik}.номер = "{entrance}" 
+                                    and {self.doma}.номер = "{home}" and {self.padik}.номер = "{entrance}"
                                     order BY {self.street}.улица, {self.doma}.номер, {self.padik}.номер''')
-                data_lifts = cursor.fetchall()
-                for lift in data_lifts:
-                    lift_str = f"{lift['Тип_лифта']}"
-                    types.append(lift_str)
-                    self.listbox_type.insert(tk.END, lift_str)
+                types = [lift['Тип_лифта'] for lift in cursor.fetchall()]
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         if self.value_type_lifts.get() == '':
             self.listbox_values_type.set(types)
-            self.entry_type_lifts.delete(0, tk.END)
         else:
-            data2 = [item for item in types if
-                    self.value_type_lifts.get().lower() in item.lower()]
-            self.listbox_values_type.set(data2)
+            filtered = [t for t in types if self.value_type_lifts.get().lower() in t.lower()]
+            self.listbox_values_type.set(filtered)
 
     def check_input_address(self, _event=None):
         '''
         ПАРСИНГ АДРЕСОВ ИЗ БД В ЛИСТБОКС.
         '''
         self.listbox_type.delete(0, tk.END)
-        names = []
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
@@ -1161,18 +1284,15 @@ class Main(tk.Frame):
                         group BY {self.street}.Улица, {self.doma}.Номер, {self.padik}.Номер
 						ORDER BY {self.street}.Улица, {self.doma}.Номер, {self.padik}.Номер''')
                 data_streets = cursor.fetchall()
-                for d in data_streets:
-                    address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"
-                    names.append(address_str)
+                names = [f"{d['Улица']}, {d['дом']}, {d['подъезд']}" for d in data_streets]
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        if self.entry_addresses.get().lower() == '':
+            return
+        if self.entry_addresses.get() == '':
             self.listbox_values.set(names)
-            self.entry_type_lifts.delete(0, tk.END)
         else:
             data = [item for item in names if self.entry_addresses.get().lower() in item.lower()]
             self.listbox_values.set(data)
-            self.on_change_selection_address
 
     def on_change_selection_lift(self, event):
         '''
@@ -1239,16 +1359,30 @@ class Main(tk.Frame):
 
     def check_similar_info_into_bd(self, data_string_values):
         """
-    В эту функцию поступают данные заявки, которую только что ввёл диспетчер.
-    После получения данных, делается запрос в БД и проверяется, есть ли такая же заявка в БД.
+    Проверяет, существует ли в БД аналогичная заявка перед созданием новой, чтобы исключить дублирование.
+    Дополнительно предупреждает диспетчера, если по данному адресу лифт уже числится остановленным,
+    а новая заявка создаётся с причиной "Неисправность".
     Args:
-        data_string_values: информация(заявка) введённая диспетчером.
+        data_string_values: словарь с данными заявки, введёнными диспетчером
+                            (Город, Адрес, Тип лифта, Причина остановки, ФИО механика).
     Process:
-        1. Пступают данные 'data_string_values'.
-        2. Делается запрос в БД.
-        3. Создается переменная 'check_info', которая принимает в себя данные из БД.
-        4. Проверяется условие, если данные в переменной 'check_info' есть, значит длина будет > 1, значит такая
-        заявка есть -> вывести ошибку. Иначе запустить функцию self.sql_insert().
+        1. Поступают данные 'data_string_values' из функции check_values_from_listboxes().
+        2. Делается запрос в БД: ищется заявка с теми же городом, адресом, типом лифта и причиной,
+           у которой дата_запуска IS NULL (т.е. ещё не закрыта).
+        3. Если дубль найден — выводится ошибка с номером и датой существующей заявки, создание отменяется.
+        4. Если дубля нет и причина новой заявки — "Неисправность":
+           делается второй запрос — есть ли активная заявка с причиной "Остановлен" по тому же адресу.
+           Если есть — выводится предупреждение с предложением продолжить или отменить создание.
+        5. Если всё в порядке — вызывается self.sql_insert() для записи заявки в БД.
+    Used Methods:
+        - self.query(): Возвращает базовый SELECT-запрос для таблицы заявок.
+        - self.sql_insert(): Выполняет вставку новой заявки в базу данных.
+        - self.obnov(): Обновляет интерфейс после вывода ошибки.
+        - mb.showerror(): Выводит диалог с сообщением об ошибке (дубль заявки).
+        - mb.askyesno(): Выводит диалог с вопросом (лифт остановлен — продолжить?).
+    Note:
+        - Активной считается заявка, у которой дата_запуска IS NULL и pc_id IS NOT NULL.
+        - Проверка на "Остановлен" срабатывает только если новая причина — "Неисправность".
         """
         try:
             with closing(self.db_manager.connect()) as connection:
@@ -1265,6 +1399,28 @@ class Main(tk.Frame):
                 cursor.execute(query)
                 check_info = cursor.fetchall()
                 if len(check_info) < 1:
+                    # Проверка: если причина новой заявки "Неисправность" —
+                    # ищем активную заявку "остановлен" по тому же адресу
+                    if data_string_values['Причина остановки'] == "Неисправность":
+                        stopped_query = self.query()
+                        stopped_end = f''' WHERE g.город = "{data_string_values['Город']}"
+                                            AND s.улица = "{data_string_values['Адрес'].split(',')[0].strip()}"
+                                            AND d.номер = "{data_string_values['Адрес'].split(',')[1].strip()}"
+                                            AND p.номер = "{data_string_values['Адрес'].split(',')[2].strip()}"
+                                            AND z.тип_лифта = "{data_string_values['Тип лифта']}"
+                                            AND z.причина = "Остановлен"
+                                            AND z.дата_запуска IS NULL AND pc_id is not NULL'''
+                        stopped_query += stopped_end
+                        cursor.execute(stopped_query)
+                        stopped_info = cursor.fetchall()
+                        if stopped_info:
+                            answer = mb.askyesno(
+                                "Внимание",
+                                f"По данному адресу лифт остановлен (заявка №{stopped_info[0][0]} от {stopped_info[0][1]}).\n"
+                                f"Продолжить создание заявки?"
+                            )
+                            if not answer:
+                                return
                     self.sql_insert()
                 else:
                     mb.showerror("Ошибка", f"Такая заявка уже существует! Её номер №{check_info[0][0]} от {check_info[0][1]}")
@@ -1273,74 +1429,47 @@ class Main(tk.Frame):
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
 
-    def take_address_from_listbox(self):
+    def sql_insert(self):
         """
-        Получает id_улицы, id_дома, id_подъезда и id_лифта для дальнейшего заноса этих id в Базу.
+        Добавляет заявку в БД.
+        Все запросы (получение id адреса, номера заявки, вставка) выполняются
+        в одном соединении и одной транзакции.
         """
+        self.on_select_disp()
+        unix_time = int(datetime.datetime.now().timestamp())
         parts_of_address = self.value_address.get().split(',')
+        current_month = datetime.datetime.now().strftime('%y-%m')
+
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor()
-                cursor.execute(f'''SELECT 
-                                {self.goroda}.id AS goroda_id, 
-                                {self.street}.id AS street_id, 
-                                {self.doma}.id AS doma_id, 
-                                {self.padik}.id AS padik_id, 
-                                {self.lifts}.id as id_лифт
+
+                # 1. Получаем id адреса и лифта
+                cursor.execute(f'''SELECT
+                                {self.goroda}.id,
+                                {self.street}.id,
+                                {self.doma}.id,
+                                {self.padik}.id,
+                                {self.lifts}.id
                                 FROM {self.lifts}
                                 JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
                                 JOIN {self.doma} ON {self.lifts}.id_дом = {self.doma}.id
                                 JOIN {self.street} ON {self.doma}.id_улица = {self.street}.id
                                 JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
-                                WHERE {self.goroda}.город = "{self.selected_city}" 
-                                AND {self.street}.улица = "{parts_of_address[0].strip()}" 
-                                AND {self.doma}.номер = "{parts_of_address[1].strip()}" 
-                                AND {self.padik}.номер = "{parts_of_address[2].strip()}" and тип_лифта="{self.value_type_lifts.get()}";''')
-                data_id_lift = cursor.fetchall()
-                return data_id_lift
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+                                WHERE {self.goroda}.город = "{self.selected_city}"
+                                AND {self.street}.улица = "{parts_of_address[0].strip()}"
+                                AND {self.doma}.номер = "{parts_of_address[1].strip()}"
+                                AND {self.padik}.номер = "{parts_of_address[2].strip()}"
+                                AND тип_лифта = "{self.value_type_lifts.get()}";''')
+                town, street, home, entrance, lift_id = cursor.fetchone()
 
-    def check_last_maxnumber(self):
-        """
-        Проверяет последний номер заявки и добавляет для будущей заявки +1 к номеру.
-        """
-        try:
-            with closing(self.db_manager.connect()) as connection:
-                cursor = connection.cursor()
+                # 2. Получаем номер заявки (в той же транзакции — защита от гонки)
                 cursor.execute(f'''SELECT COALESCE(MAX(Номер_заявки), 0) FROM {self.zayavki}
-                    WHERE DATE_FORMAT(FROM_UNIXTIME(`Дата_заявки`), '%y-%m') = ?''',
-                    ((datetime.datetime.now()).strftime('%y-%m'),))
-                number_application = cursor.fetchone()[0]
-                return number_application + 1
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+                                WHERE DATE_FORMAT(FROM_UNIXTIME(`Дата_заявки`), '%y-%m') = ?''',
+                               (current_month,))
+                number_application = cursor.fetchone()[0] + 1
 
-    def sql_insert(self):
-        """
-        Добавляет заявку в БД.
-        Variables:
-        |data_lifts|: берёт значения(id_улица, id_дом, id_подъезд, id_лифт) из функции self.take_address_from_listbox().
-        |number_application|: берёт из функции(self.check_last_maxnumber()) последний номер последней
-                              заявки актуального месяца из БД и делает +1.
-        |self.on_select_disp()|: передаёт id диспетчера в эту функцию.
-        """
-        data_id_lift = self.take_address_from_listbox()
-        number_application = self.check_last_maxnumber()
-        self.on_select_disp()
-        date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%y, %H:%M")
-        time_obj = datetime.datetime.strptime(date_, time_format)
-        unix_time = int(time_obj.timestamp())
-
-        town, street, home, entrance, lift_id = data_id_lift[0]
-
-        values = (number_application, unix_time, self.selected_disp_id,
-               town, street, home, entrance, self.entry_type_lifts.get(),
-            self.value_prichina.get(), None, self.selected_meh_id,
-               '', lift_id, self.pc_id)
-        try:
-            with closing(self.db_manager.connect()) as connection:
-                cursor = connection.cursor()
+                # 3. Вставляем заявку
                 cursor.execute(f'''INSERT INTO {self.zayavki} (
                                 Номер_заявки,
                                 Дата_заявки,
@@ -1355,11 +1484,16 @@ class Main(tk.Frame):
                                 id_Механик,
                                 Комментарий,
                                 id_Лифт,
-                                pc_id) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',(values))
+                                pc_id)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',
+                               (number_application, unix_time, self.selected_disp_id,
+                                town, street, home, entrance, self.entry_type_lifts.get(),
+                                self.value_prichina.get(), None, self.selected_meh_id,
+                                '', lift_id, self.pc_id))
                 connection.commit()
         except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных123: {e}")
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+            return
 
         msg = f"Запись успешно добавлена! Её порядковый номер - {number_application}"
         self.show_temporary_message('Информация', msg)
@@ -1441,12 +1575,232 @@ class Main(tk.Frame):
         message_window.after(duration, fade_out)
 
     # ======ФУНКЦИЯ СПРОСА О ЗАКРЫТИИ ПРОГРАММЫ=================================================
+    def reload_mechanics(self):
+        """Перезагружает список механиков из БД и обновляет листбокс в главном окне."""
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"select id, ФИО from {self.workers} where Должность = 'Механик' and is_active = 1 order by ФИО")
+                self.data_meh = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+            return
+        self.listbox_fio_meh.delete(0, tk.END)
+        for d in self.data_meh:
+            self.listbox_fio_meh.insert(tk.END, d['ФИО'])
+
+    def open_workers_window(self):
+        WorkersWindow(self.db_manager, self.workers, on_change=self.reload_mechanics)
+
     def on_closing(self):
         result = askyesno(title="Подтвержение действия", message="Закрыть программу?")
         if result:
             root.destroy()
         else:
             showinfo("Результат", "Действие отменено.")
+
+
+#====ОКНО СОТРУДНИКОВ=================================================================================
+class WorkersWindow(tk.Toplevel):
+    def __init__(self, db_manager, workers_table, on_change=None):
+        super().__init__()
+        self.db_manager = db_manager
+        self.workers_table = workers_table
+        self.on_change = on_change
+
+        self.title("Сотрудники")
+        self.resizable(False, False)
+        self.grab_set()
+        self.wm_attributes('-topmost', 1)
+
+        font_main = ('Calibri', 14)
+        font_bold = ('Calibri', 14, 'bold')
+
+        # --- Фильтр по должности ---
+        filter_frame = tk.Frame(self, pady=6)
+        filter_frame.pack(fill=tk.X, padx=10)
+        tk.Label(filter_frame, text="Должность:", font=font_main).pack(side=tk.LEFT)
+        self.filter_var = tk.StringVar(value="Все")
+        for val in ("Все", "Механик", "Диспетчер"):
+            tk.Radiobutton(filter_frame, text=val, value=val, variable=self.filter_var,
+                           font=font_main, command=self.load_workers).pack(side=tk.LEFT, padx=6)
+
+        # --- Список сотрудников ---
+        list_frame = tk.Frame(self)
+        list_frame.pack(padx=10, pady=4)
+        scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL)
+        self.listbox = tk.Listbox(list_frame, width=40, height=16, font=font_main,
+                                  yscrollcommand=scrollbar.set, selectmode=tk.SINGLE)
+        scrollbar.config(command=self.listbox.yview)
+        self.listbox.pack(side=tk.LEFT)
+        scrollbar.pack(side=tk.LEFT, fill=tk.Y)
+
+        # --- Добавление сотрудника ---
+        add_frame = tk.LabelFrame(self, text="Добавить сотрудника", font=font_bold, padx=8, pady=6)
+        add_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        tk.Label(add_frame, text="ФИО (Фамилия Имя):", font=font_main).grid(row=0, column=0, sticky='w')
+        self.entry_fio = tk.Entry(add_frame, font=font_main, width=25)
+        self.entry_fio.grid(row=0, column=1, padx=6)
+
+        tk.Label(add_frame, text="Должность:", font=font_main).grid(row=1, column=0, sticky='w', pady=4)
+        self.add_dolzh_var = tk.StringVar(value="Механик")
+        cb = ttk.Combobox(add_frame, textvariable=self.add_dolzh_var,
+                          values=["Механик", "Диспетчер"], font=font_main,
+                          state='readonly', width=14)
+        cb.grid(row=1, column=1, padx=6, sticky='w')
+
+        tk.Button(add_frame, text="Добавить", font=font_bold, bg='#d7efd7',
+                  command=self.add_worker).grid(row=2, column=0, columnspan=2, pady=6)
+
+        # --- Кнопка удаления ---
+        tk.Button(self, text="Уволить выбранного", font=font_bold, bg='#f5d0d0',
+                  command=self.deactivate_worker).pack(pady=(0, 10))
+
+        self.load_workers()
+        self.update_idletasks()
+        self.geometry(f"+{self.winfo_screenwidth()//2 - self.winfo_width()//2}"
+                      f"+{self.winfo_screenheight()//2 - self.winfo_height()//2}")
+
+    def _show_fired_dialog(self, fired, new_fio):
+        """
+        Показывает диалог с уволенными сотрудниками с той же фамилией.
+        Возвращает id выбранного для восстановления, None — если добавить нового, -1 — если отмена.
+        """
+        result = [None]
+        dialog = tk.Toplevel(self)
+        dialog.title("Найдены уволенные сотрудники")
+        dialog.resizable(False, False)
+        dialog.grab_set()
+        dialog.wm_attributes('-topmost', 1)
+
+        tk.Label(dialog, text="Найдены уволенные сотрудники с такой фамилией.\nВыберите для восстановления или добавьте нового:",
+                 font=('Calibri', 13), justify='center', padx=15, pady=10).pack()
+
+        listbox = tk.Listbox(dialog, font=('Calibri', 13), width=35, height=len(fired),
+                             selectmode=tk.SINGLE)
+        listbox.pack(padx=15, pady=4)
+        for w in fired:
+            listbox.insert(tk.END, f"{w['ФИО']}  [{w['Должность']}]")
+
+        btn_frame = tk.Frame(dialog, pady=8)
+        btn_frame.pack()
+
+        def on_restore():
+            sel = listbox.curselection()
+            if not sel:
+                mb.showwarning("Внимание", "Выберите сотрудника из списка.", parent=dialog)
+                return
+            result[0] = fired[sel[0]]['id']
+            dialog.destroy()
+
+        def on_add_new():
+            result[0] = None
+            dialog.destroy()
+
+        def on_cancel():
+            result[0] = -1
+            dialog.destroy()
+
+        tk.Button(btn_frame, text="Восстановить", font=('Calibri', 13, 'bold'), bg='#d7efd7',
+                  width=14, command=on_restore).pack(side='left', padx=6)
+        tk.Button(btn_frame, text=f"Добавить нового", font=('Calibri', 13), bg='#d7d8e0',
+                  width=14, command=on_add_new).pack(side='left', padx=6)
+        tk.Button(btn_frame, text="Отмена", font=('Calibri', 13), width=10,
+                  command=on_cancel).pack(side='left', padx=6)
+
+        dialog.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() // 2) - (dialog.winfo_width() // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        dialog.protocol("WM_DELETE_WINDOW", on_cancel)
+        self.wait_window(dialog)
+        return result[0]
+
+    def load_workers(self):
+        self.listbox.delete(0, tk.END)
+        self.worker_ids = []
+        filt = self.filter_var.get()
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                if filt == "Все":
+                    cursor.execute(f"SELECT id, ФИО, Должность FROM {self.workers_table} "
+                                   f"WHERE is_active = 1 ORDER BY Должность, ФИО")
+                else:
+                    cursor.execute(f"SELECT id, ФИО, Должность FROM {self.workers_table} "
+                                   f"WHERE is_active = 1 AND Должность = ? ORDER BY ФИО", (filt,))
+                rows = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        for row in rows:
+            self.listbox.insert(tk.END, f"{row['ФИО']}  [{row['Должность']}]")
+            self.worker_ids.append(row['id'])
+
+    def add_worker(self):
+        fio = self.entry_fio.get().strip()
+        dolzh = self.add_dolzh_var.get()
+        if not fio:
+            mb.showwarning("Внимание", "Введите ФИО сотрудника.", parent=self)
+            return
+        parts = fio.split()
+        if len(parts) != 2 or not all(p.isalpha() for p in parts):
+            mb.showwarning("Внимание", "ФИО должно быть в формате «Иванов Сергей» (Фамилия Имя).", parent=self)
+            return
+        fio = ' '.join(p.capitalize() for p in parts)
+        surname = parts[0].capitalize()
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                # Ищем уволенных с той же фамилией и должностью
+                cursor.execute(f"SELECT id, ФИО, Должность FROM {self.workers_table} "
+                               f"WHERE ФИО LIKE ? AND Должность = ? AND is_active = 0",
+                               (f"{surname}%", dolzh))
+                fired = cursor.fetchall()
+
+                restore_id = None
+                if fired:
+                    restore_id = self._show_fired_dialog(fired, fio)
+                    if restore_id == -1:  # диспетчер закрыл окно — отмена
+                        return
+
+                if restore_id:
+                    cursor.execute(f"UPDATE {self.workers_table} SET is_active = 1 WHERE id = ?", (restore_id,))
+                else:
+                    cursor.execute(f"INSERT INTO {self.workers_table} (ФИО, Должность, is_active) VALUES (?, ?, 1)",
+                                   (fio, dolzh))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.entry_fio.delete(0, tk.END)
+        self.load_workers()
+        if self.on_change:
+            self.on_change()
+
+    def deactivate_worker(self):
+        selection = self.listbox.curselection()
+        if not selection:
+            mb.showwarning("Внимание", "Выберите сотрудника из списка.", parent=self)
+            return
+        idx = selection[0]
+        worker_id = self.worker_ids[idx]
+        name = self.listbox.get(idx)
+        confirm = mb.askyesno("Подтверждение", f"Уволить сотрудника?\n{name}", parent=self)
+        if not confirm:
+            return
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor()
+                cursor.execute(f"UPDATE {self.workers_table} SET is_active = 0 WHERE id = ?", (worker_id,))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.load_workers()
+        if self.on_change:
+            self.on_change()
 
 
 #====НАВЕДЕНИЕ МЫШКОЙ НА КОММЕНТ=====================================================================
@@ -1601,7 +1955,7 @@ class Edit(tk.Toplevel):
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
-                cursor.execute(f"SELECT id, ФИО FROM {self.workers} WHERE Должность = 'Диспетчер'")
+                cursor.execute(f"SELECT id, ФИО FROM {self.workers} WHERE Должность = 'Диспетчер' AND is_active = 1")
                 read = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1679,7 +2033,7 @@ class Edit(tk.Toplevel):
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
-                cursor.execute(f"select ФИО, id from {self.workers} where Должность = 'Механик' order by ФИО")
+                cursor.execute(f"select ФИО, id from {self.workers} where Должность = 'Механик' and is_active = 1 order by ФИО")
                 read = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1693,7 +2047,7 @@ class Edit(tk.Toplevel):
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
-                cursor.execute(f"select ФИО, id from {self.workers} where Должность = 'Механик' order by ФИО")
+                cursor.execute(f"select ФИО, id from {self.workers} where Должность = 'Механик' and is_active = 1 order by ФИО")
                 read = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
