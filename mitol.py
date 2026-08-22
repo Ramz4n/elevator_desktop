@@ -1,7 +1,11 @@
 from imports import *
 import msvcrt
+import os
+import socket
+from tkinter import filedialog
 
 _lock_file_handle = None
+LOCAL_BACKUP_DIR = 'Backup'  # папка рядом с mitol.exe, см. backup.py
 
 
 def acquire_single_instance_lock():
@@ -61,6 +65,17 @@ class Main(tk.Frame):
         m.add_cascade(label="Добавить", menu=add_menu)
         add_menu.add_command(label="Сотрудники", command=self.open_workers_window)
         add_menu.add_command(label="Адреса", command=self.open_addresses_window)
+        fm.add_separator()
+        fm.add_command(label="Резервная копия сейчас", command=self.backup_now)
+        fm.add_command(label="Восстановить из резервной копии", command=self.restore_backup_dialog)
+        fm.add_separator()
+        fm.add_command(label="Общий пользователь БД (настройка)", command=self.open_shared_user_setup)
+        fm.add_command(label="Проверить обновления", command=self._check_update_manual)
+        try:
+            from updater import APP_VERSION as _app_version
+        except Exception:
+            _app_version = "?"
+        fm.add_command(label=f"Версия: v{_app_version}", state='disabled')
         # =======1 ОСНОВНОЙ TOOLBAR====================================================================
         toolbar_general = tk.Frame(borderwidth=1, relief="raised")
         toolbar_general.pack(side=tk.TOP, fill=tk.X)
@@ -94,6 +109,7 @@ class Main(tk.Frame):
         self.canvas_dispetcher = tk.Canvas(toolbar_dispetcher, width=100)
         y_scrollbar_dispetcher = ttk.Scrollbar(toolbar_dispetcher, orient="vertical", command=self.canvas_dispetcher.yview)
         scrollable_frame_dispetcher = ttk.Frame(self.canvas_dispetcher)
+        self.scrollable_frame_dispetcher = scrollable_frame_dispetcher
 
         scrollable_frame_dispetcher.bind(
                             "<Configure>",
@@ -112,8 +128,13 @@ class Main(tk.Frame):
 
         self.workers_dict = {disp['ФИО']: disp['id'] for disp in data_workers}
 
-        # Устанавливаем значение для StringVar
-        self.disp = tk.StringVar(value=data_worker['ФИО'] if data_worker else '')
+        # Устанавливаем значение для StringVar. Если для этого pc_id ещё нет
+        # ни одной заявки (первый запуск) -- data_worker пуст, но диспетчера
+        # всё равно нужно выбрать по умолчанию (первого из списка), иначе
+        # ни одна радиокнопка не будет реально выбрана, и заявку можно
+        # будет создать без диспетчера (id_Диспетчер = NULL в БД).
+        default_disp = data_worker['ФИО'] if data_worker else (data_workers[0]['ФИО'] if data_workers else '')
+        self.disp = tk.StringVar(value=default_disp)
         self.disp.trace("w", self.on_select_disp)
 
         for disp in data_workers:
@@ -1469,6 +1490,9 @@ class Main(tk.Frame):
         в одном соединении и одной транзакции.
         """
         self.on_select_disp()
+        if not self.selected_disp_id:
+            mb.showwarning("Внимание", "Выберите диспетчера перед созданием заявки.")
+            return
         unix_time = int(datetime.datetime.now().timestamp())
         parts_of_address = self.value_address.get().split(',')
         current_month = datetime.datetime.now().strftime('%y-%m')
@@ -1622,11 +1646,230 @@ class Main(tk.Frame):
         for d in self.data_meh:
             self.listbox_fio_meh.insert(tk.END, d['ФИО'])
 
+    def reload_dispatchers(self):
+        """Перезагружает список диспетчеров из БД и обновляет радиокнопки в toolbar'е."""
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f'''select id, ФИО from {self.workers} '''
+                                f'''where Должность="Диспетчер" and is_active = 1 order by ФИО''')
+                data_workers = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+            return
+        current = self.disp.get()
+        self.workers_dict = {disp['ФИО']: disp['id'] for disp in data_workers}
+        for widget in self.scrollable_frame_dispetcher.winfo_children():
+            widget.destroy()
+        for disp in data_workers:
+            radiobutton = tk.Radiobutton(self.scrollable_frame_dispetcher, font=('Calibri', 16), text=disp['ФИО'],
+                                         variable=self.disp,
+                                         value=disp['ФИО'])
+            radiobutton.pack(anchor="w")
+            radiobutton.bind("<MouseWheel>", self._on_mousewheel2)
+            radiobutton.bind("<Button-4>", self._on_mousewheel2)
+            radiobutton.bind("<Button-5>", self._on_mousewheel2)
+        names = [d['ФИО'] for d in data_workers]
+        if current not in names:
+            self.disp.set(names[0] if names else '')
+
+    def reload_workers(self):
+        """Обновляет и список механиков, и список диспетчеров -- WorkersWindow
+        не сообщает, кого именно добавили/изменили/уволили, поэтому проще
+        освежить оба сразу."""
+        self.reload_mechanics()
+        self.reload_dispatchers()
+
     def open_workers_window(self):
-        WorkersWindow(self.db_manager, self.workers, on_change=self.reload_mechanics)
+        WorkersWindow(self.db_manager, self.workers, on_change=self.reload_workers)
 
     def open_addresses_window(self):
         AddressesWindow(self.db_manager, self.tables, on_change=self.reload_cities)
+
+    def open_shared_user_setup(self):
+        SharedUserSetupWindow()
+
+    def _show_backup_progress_modal(self, text):
+        """Немодально блокирующий (grab_set) индикатор на время фоновой
+        операции с БД -- без него не видно, что что-то вообще происходит,
+        пока дамп/восстановление идут в отдельном потоке."""
+        win = tk.Toplevel(root)
+        win.title("Резервное копирование")
+        win.resizable(False, False)
+        win.protocol("WM_DELETE_WINDOW", lambda: None)  # нельзя закрыть посреди операции
+        win.wm_attributes('-topmost', 1)
+        tk.Label(win, text=text, font=('Calibri', 12), padx=24, pady=18).pack()
+        win.update_idletasks()
+        win.geometry(f"+{root.winfo_x() + root.winfo_width() // 2 - win.winfo_width() // 2}"
+                     f"+{root.winfo_y() + root.winfo_height() // 2 - win.winfo_height() // 2}")
+        win.grab_set()
+        return win
+
+    def backup_now(self, silent=False, force=False):
+        """
+        Создаёт резервную копию БД в папке Backup рядом с mitol.exe.
+        Сам дамп таблиц выполняется в фоновом потоке, чтобы не подвешивать
+        интерфейс на время операции -- особенно заметно с ростом таблицы
+        zayavki.
+        silent=True -- фоновый автобэкап (без диалогов и индикатора на
+        успех; ошибка логируется через updater._log_error, если доступен).
+        force=True -- пропускает проверку на подозрительное уменьшение
+        данных (см. backup.BackupShrinkAnomaly); используется только после
+        того, как пользователь явно подтвердил, что уменьшение ожидаемо.
+        """
+        if getattr(self, '_backup_in_progress', False):
+            if not silent:
+                mb.showinfo("Информация", "Резервное копирование уже выполняется.", parent=root)
+            return
+        try:
+            import backup as backup_module
+        except Exception as e:
+            if not silent:
+                mb.showerror("Ошибка", f"Модуль резервного копирования недоступен:\n{e}", parent=root)
+            return
+
+        self._backup_in_progress = True
+        progress_win = None if silent else self._show_backup_progress_modal("Создание резервной копии...")
+
+        def worker():
+            error = None
+            path = None
+            try:
+                path = backup_module.create_backup(self.db_manager, list(self.tables.values()), LOCAL_BACKUP_DIR,
+                                                     check_shrink=not force)
+                backup_module.rotate_backups(LOCAL_BACKUP_DIR)
+            except Exception as e:
+                error = e
+
+            def finish():
+                self._backup_in_progress = False
+                if progress_win is not None:
+                    progress_win.destroy()
+
+                if isinstance(error, backup_module.BackupShrinkAnomaly):
+                    # Специально НЕ тихо: это может быть признак взлома/потери
+                    # данных, и молчать тут нельзя даже в фоновом автобэкапе --
+                    # иначе можно узнать об инциденте, только когда все 14
+                    # старых бэкапов уже сами станут такими же пустыми.
+                    if silent:
+                        mb.showwarning(
+                            "Внимание — резервная копия НЕ создана",
+                            "Автобэкап пропущен: данных в базе стало заметно меньше, чем в\n"
+                            f"прошлой резервной копии (было {error.previous_total}, "
+                            f"стало {error.current_total}).\n\n"
+                            "Похоже на потерю или удаление данных. Последний хороший бэкап\n"
+                            f"в папке {LOCAL_BACKUP_DIR} не тронут. Если уменьшение ожидаемо\n"
+                            "(например, почистили старые записи вручную) — сделайте бэкап\n"
+                            "сейчас через меню.",
+                            parent=root,
+                        )
+                    else:
+                        if mb.askyesno(
+                            "Подозрительное уменьшение данных",
+                            "В базе стало заметно меньше строк, чем в прошлой резервной\n"
+                            f"копии (было {error.previous_total}, стало {error.current_total}).\n\n"
+                            "Если это ожидаемо (например, вы сами почистили старые записи) —\n"
+                            "можно сохранить бэкап всё равно. Если нет — НЕ сохраняйте и\n"
+                            "проверьте базу данных.\n\n"
+                            "Сохранить резервную копию всё равно?",
+                            parent=root,
+                        ):
+                            self.backup_now(silent=False, force=True)
+                    return
+
+                if error is not None:
+                    if silent:
+                        try:
+                            from updater import _log_error
+                            _log_error("backup_now (silent)", error)
+                        except Exception:
+                            pass
+                    else:
+                        mb.showerror("Ошибка", f"Не удалось создать резервную копию:\n{error}", parent=root)
+                    return
+                if not silent:
+                    mb.showinfo("Готово", f"Резервная копия создана:\n{path}", parent=root)
+
+            root.after(0, finish)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def restore_backup_dialog(self):
+        if getattr(self, '_backup_in_progress', False):
+            mb.showinfo("Информация", "Дождитесь завершения текущей операции резервного копирования.", parent=root)
+            return
+        try:
+            import backup as backup_module
+        except Exception as e:
+            mb.showerror("Ошибка", f"Модуль резервного копирования недоступен:\n{e}", parent=root)
+            return
+        path = filedialog.askopenfilename(
+            parent=root,
+            title="Выбрать резервную копию для восстановления",
+            initialdir=LOCAL_BACKUP_DIR if os.path.isdir(LOCAL_BACKUP_DIR) else '.',
+            filetypes=[("Резервные копии", f"{backup_module.BACKUP_FILE_PREFIX}*.zip"), ("Все файлы", "*.*")],
+        )
+        if not path:
+            return
+        if not mb.askyesno(
+            "Подтверждение",
+            "Восстановление ПОЛНОСТЬЮ заменит текущие данные в базе данными\n"
+            "из выбранной резервной копии. Это действие нельзя отменить.\n\n"
+            "Продолжить?",
+            parent=root,
+        ):
+            return
+
+        self._backup_in_progress = True
+        progress_win = self._show_backup_progress_modal("Восстановление данных...")
+
+        def worker():
+            error = None
+            try:
+                backup_module.restore_backup(self.db_manager, list(self.tables.values()), path)
+            except Exception as e:
+                error = e
+
+            def finish():
+                self._backup_in_progress = False
+                progress_win.destroy()
+                if error is not None:
+                    mb.showerror("Ошибка", f"Не удалось восстановить из резервной копии:\n{error}", parent=root)
+                    return
+                mb.showinfo(
+                    "Готово",
+                    "Данные восстановлены. Перезапустите программу, чтобы изменения\n"
+                    "точно применились везде.",
+                    parent=root,
+                )
+
+            root.after(0, finish)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _check_update_manual(self):
+        """Ручная проверка обновлений по пункту меню — в отличие от фоновой
+        проверки, всегда показывает результат пользователю (в том числе
+        когда обновлений нет или сервер недоступен), чтобы можно было
+        разобраться, почему автообновление не сработало."""
+        try:
+            from updater import APP_VERSION, check_for_update, show_update_dialog, apply_update, _log_error
+        except Exception as e:
+            mb.showerror("Ошибка", f"Модуль обновлений недоступен:\n{e}", parent=root)
+            return
+
+        try:
+            upd = check_for_update(silent=False)
+        except Exception as e:
+            _log_error("_check_update_manual", e)
+            mb.showerror("Ошибка", f"Не удалось проверить обновления:\n{e}", parent=root)
+            return
+
+        if upd:
+            if show_update_dialog(upd, parent=root):
+                apply_update(upd["download_url"], parent_widget=root)
+        else:
+            mb.showinfo("Информация", f"У вас установлена последняя версия ({APP_VERSION}).", parent=root)
 
     def reload_cities(self):
         """Перезагружает список городов из БД и обновляет радиокнопки в главном окне."""
@@ -1677,6 +1920,8 @@ class WorkersWindow(tk.Toplevel):
         font_main = ('Calibri', 14)
         font_bold = ('Calibri', 14, 'bold')
 
+        self.selected_worker_id = None
+
         # --- Фильтр по должности ---
         filter_frame = tk.Frame(self, pady=6)
         filter_frame.pack(fill=tk.X, padx=10)
@@ -1695,6 +1940,7 @@ class WorkersWindow(tk.Toplevel):
         scrollbar.config(command=self.listbox.yview)
         self.listbox.pack(side=tk.LEFT)
         scrollbar.pack(side=tk.LEFT, fill=tk.Y)
+        self.listbox.bind('<<ListboxSelect>>', self.on_worker_selected)
 
         # --- Добавление сотрудника ---
         add_frame = tk.LabelFrame(self, text="Добавить сотрудника", font=font_bold, padx=8, pady=6)
@@ -1714,9 +1960,29 @@ class WorkersWindow(tk.Toplevel):
         tk.Button(add_frame, text="Добавить", font=font_bold, bg='#d7efd7',
                   command=self.add_worker).grid(row=2, column=0, columnspan=2, pady=6)
 
-        # --- Кнопка удаления ---
-        tk.Button(self, text="Уволить выбранного", font=font_bold, bg='#f5d0d0',
-                  command=self.deactivate_worker).pack(pady=(0, 10))
+        # --- Редактирование выбранного сотрудника ---
+        edit_frame = tk.LabelFrame(self, text="Изменить выбранного", font=font_bold, padx=8, pady=6)
+        edit_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        tk.Label(edit_frame, text="ФИО (Фамилия Имя):", font=font_main).grid(row=0, column=0, sticky='w')
+        self.edit_entry_fio = tk.Entry(edit_frame, font=font_main, width=25, state='disabled')
+        self.edit_entry_fio.grid(row=0, column=1, padx=6)
+
+        tk.Label(edit_frame, text="Должность:", font=font_main).grid(row=1, column=0, sticky='w', pady=4)
+        self.edit_dolzh_var = tk.StringVar(value="Механик")
+        self.edit_dolzh_cb = ttk.Combobox(edit_frame, textvariable=self.edit_dolzh_var,
+                                           values=["Механик", "Диспетчер"], font=font_main,
+                                           state='disabled', width=14)
+        self.edit_dolzh_cb.grid(row=1, column=1, padx=6, sticky='w')
+
+        edit_btns = tk.Frame(edit_frame)
+        edit_btns.grid(row=2, column=0, columnspan=2, pady=6)
+        self.btn_save_worker = tk.Button(edit_btns, text="Сохранить", font=font_bold, bg='#d7e3ef',
+                                          state='disabled', command=self.save_worker_edit)
+        self.btn_save_worker.pack(side=tk.LEFT, padx=4)
+        self.btn_deactivate_worker = tk.Button(edit_btns, text="Уволить", font=font_bold, bg='#f5d0d0',
+                                                state='disabled', command=self.deactivate_worker)
+        self.btn_deactivate_worker.pack(side=tk.LEFT, padx=4)
 
         self.load_workers()
         self.update_idletasks()
@@ -1743,6 +2009,7 @@ class WorkersWindow(tk.Toplevel):
         listbox.pack(padx=15, pady=4)
         for w in fired:
             listbox.insert(tk.END, f"{w['ФИО']}  [{w['Должность']}]")
+        listbox.selection_set(0)
 
         btn_frame = tk.Frame(dialog, pady=8)
         btn_frame.pack()
@@ -1781,6 +2048,7 @@ class WorkersWindow(tk.Toplevel):
     def load_workers(self):
         self.listbox.delete(0, tk.END)
         self.worker_ids = []
+        self.worker_rows = []
         filt = self.filter_var.get()
         try:
             with closing(self.db_manager.connect()) as connection:
@@ -1798,6 +2066,27 @@ class WorkersWindow(tk.Toplevel):
         for row in rows:
             self.listbox.insert(tk.END, f"{row['ФИО']}  [{row['Должность']}]")
             self.worker_ids.append(row['id'])
+            self.worker_rows.append(row)
+        self.selected_worker_id = None
+        self.edit_entry_fio.delete(0, tk.END)
+        self.edit_entry_fio.config(state='disabled')
+        self.edit_dolzh_cb.config(state='disabled')
+        self.btn_save_worker.config(state='disabled')
+        self.btn_deactivate_worker.config(state='disabled')
+
+    def on_worker_selected(self, event=None):
+        selection = self.listbox.curselection()
+        if not selection:
+            return
+        row = self.worker_rows[selection[0]]
+        self.selected_worker_id = row['id']
+        self.edit_entry_fio.config(state='normal')
+        self.edit_entry_fio.delete(0, tk.END)
+        self.edit_entry_fio.insert(0, row['ФИО'])
+        self.edit_dolzh_cb.config(state='readonly')
+        self.edit_dolzh_var.set(row['Должность'])
+        self.btn_save_worker.config(state='normal')
+        self.btn_deactivate_worker.config(state='normal')
 
     def add_worker(self):
         fio = self.entry_fio.get().strip()
@@ -1840,21 +2129,52 @@ class WorkersWindow(tk.Toplevel):
         if self.on_change:
             self.on_change()
 
+    def save_worker_edit(self):
+        if not self.selected_worker_id:
+            return
+        fio = self.edit_entry_fio.get().strip()
+        dolzh = self.edit_dolzh_var.get()
+        if not fio:
+            mb.showwarning("Внимание", "Введите ФИО сотрудника.", parent=self)
+            return
+        parts = fio.split()
+        if len(parts) != 2 or not all(p.isalpha() for p in parts):
+            mb.showwarning("Внимание", "ФИО должно быть в формате «Иванов Сергей» (Фамилия Имя).", parent=self)
+            return
+        fio = ' '.join(p.capitalize() for p in parts)
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id FROM {self.workers_table} WHERE ФИО = ? AND Должность = ? "
+                               f"AND is_active = 1 AND id <> ?", (fio, dolzh, self.selected_worker_id))
+                if cursor.fetchone():
+                    mb.showwarning("Внимание", "Такой сотрудник уже есть в списке.", parent=self)
+                    return
+                cursor.execute(f"UPDATE {self.workers_table} SET ФИО = ?, Должность = ? WHERE id = ?",
+                               (fio, dolzh, self.selected_worker_id))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        mb.showinfo("Готово", "Данные сотрудника обновлены.", parent=self)
+        self.load_workers()
+        if self.on_change:
+            self.on_change()
+
     def deactivate_worker(self):
-        selection = self.listbox.curselection()
-        if not selection:
+        if not self.selected_worker_id:
             mb.showwarning("Внимание", "Выберите сотрудника из списка.", parent=self)
             return
-        idx = selection[0]
-        worker_id = self.worker_ids[idx]
-        name = self.listbox.get(idx)
+        selection = self.listbox.curselection()
+        name = self.listbox.get(selection[0]) if selection else ""
         confirm = mb.askyesno("Подтверждение", f"Уволить сотрудника?\n{name}", parent=self)
         if not confirm:
             return
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor()
-                cursor.execute(f"UPDATE {self.workers_table} SET is_active = 0 WHERE id = ?", (worker_id,))
+                cursor.execute(f"UPDATE {self.workers_table} SET is_active = 0 WHERE id = ?",
+                               (self.selected_worker_id,))
                 connection.commit()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
@@ -1886,6 +2206,19 @@ class AddressesWindow(tk.Toplevel):
         self.selected_uk_id = None
         self.selected_doma_id = None
 
+        # --- состояние вкладки "Редактировать" ---
+        self.edit_cities = []
+        self.edit_streets = []
+        self.edit_domas = []
+        self.edit_doma_streets = []
+        self.edit_selected_city_id = None
+        self.edit_street_filter_city_id = None
+        self.edit_selected_street_id = None
+        self.edit_selected_uk_id = None
+        self.edit_doma_filter_city_id = None
+        self.edit_doma_filter_street_id = None
+        self.edit_selected_doma_id = None
+
         self.title("Адреса")
         self.resizable(True, True)
         self.grab_set()
@@ -1900,28 +2233,25 @@ class AddressesWindow(tk.Toplevel):
         self.geometry(f"{window_width}x{window_height}+{(self.winfo_screenwidth() - window_width) // 2}+30")
         self.minsize(window_width, 300)
 
-        outer = tk.Frame(self)
-        outer.pack(fill=tk.BOTH, expand=True)
-        self.canvas = tk.Canvas(outer, highlightthickness=0)
-        vscroll = tk.Scrollbar(outer, orient=tk.VERTICAL, command=self.canvas.yview)
-        self.content = tk.Frame(self.canvas)
+        # --- Вкладки "Добавить" / "Редактировать" ---
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        self.content.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-        self.canvas.create_window((0, 0), window=self.content, anchor="nw")
-        self.canvas.configure(yscrollcommand=vscroll.set)
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        vscroll.pack(side=tk.RIGHT, fill=tk.Y)
+        add_tab = tk.Frame(self.notebook)
+        edit_tab = tk.Frame(self.notebook)
+        self.notebook.add(add_tab, text="Добавить")
+        self.notebook.add(edit_tab, text="Редактировать")
 
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-        self.canvas.bind_all("<Button-4>", self._on_mousewheel)
-        self.canvas.bind_all("<Button-5>", self._on_mousewheel)
+        self.add_canvas, self.add_content = self._build_scrollable_tab(add_tab)
+        self.edit_canvas, self.edit_content = self._build_scrollable_tab(edit_tab)
+
+        self.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.bind_all("<Button-4>", self._on_mousewheel)
+        self.bind_all("<Button-5>", self._on_mousewheel)
         self.bind("<Destroy>", self._on_destroy)
 
         # --- Город ---
-        city_frame = tk.LabelFrame(self.content, text="Город", font=font_bold, padx=8, pady=6)
+        city_frame = tk.LabelFrame(self.add_content, text="Город", font=font_bold, padx=8, pady=6)
         city_frame.pack(fill=tk.X, padx=10, pady=6)
 
         self.city_var = tk.StringVar()
@@ -1938,7 +2268,7 @@ class AddressesWindow(tk.Toplevel):
                   command=self.add_city).grid(row=2, column=0, columnspan=2, pady=4)
 
         # --- Улица ---
-        street_frame = tk.LabelFrame(self.content, text="Улица", font=font_bold, padx=8, pady=6)
+        street_frame = tk.LabelFrame(self.add_content, text="Улица", font=font_bold, padx=8, pady=6)
         street_frame.pack(fill=tk.X, padx=10, pady=6)
 
         self.street_var = tk.StringVar()
@@ -1955,46 +2285,47 @@ class AddressesWindow(tk.Toplevel):
                   command=self.add_street).grid(row=2, column=0, columnspan=2, pady=4)
 
         # --- УК ---
-        uk_frame = tk.LabelFrame(self.content, text="УК (управляющая компания)", font=font_bold, padx=8, pady=6)
+        uk_frame = tk.LabelFrame(self.add_content, text="УК (управляющая компания)", font=font_bold, padx=8, pady=6)
         uk_frame.pack(fill=tk.X, padx=10, pady=6)
 
+        tk.Label(uk_frame, text="Новая УК:", font=font_main).grid(row=0, column=0, sticky='w', pady=4)
+        self.entry_new_uk = tk.Entry(uk_frame, font=font_main, width=22)
+        self.entry_new_uk.grid(row=0, column=1, padx=6, sticky='w')
+        tk.Button(uk_frame, text="Добавить УК", font=font_main, bg='#d7efd7',
+                  command=self.add_uk).grid(row=1, column=0, columnspan=2, pady=4)
+
+        # --- Дом (адрес) ---
+        doma_frame = tk.LabelFrame(self.add_content, text="Дом", font=font_bold, padx=8, pady=6)
+        doma_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        tk.Label(doma_frame, text="УК для нового дома:", font=font_main).grid(row=0, column=0, sticky='w')
         self.uk_var = tk.StringVar()
-        self.uk_cb = ttk.Combobox(uk_frame, textvariable=self.uk_var, font=font_main,
-                                   state='readonly', width=30)
-        self.uk_cb.grid(row=0, column=0, columnspan=2, sticky='w')
+        self.uk_cb = ttk.Combobox(doma_frame, textvariable=self.uk_var, font=font_main,
+                                   state='readonly', width=22)
+        self.uk_cb.grid(row=0, column=1, padx=6, sticky='w')
         self.uk_cb.bind('<<ComboboxSelected>>', self.on_uk_selected)
         self.uk_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
 
-        tk.Label(uk_frame, text="Новая УК:", font=font_main).grid(row=1, column=0, sticky='w', pady=4)
-        self.entry_new_uk = tk.Entry(uk_frame, font=font_main, width=22)
-        self.entry_new_uk.grid(row=1, column=1, padx=6, sticky='w')
-        tk.Button(uk_frame, text="Добавить УК", font=font_main, bg='#d7efd7',
-                  command=self.add_uk).grid(row=2, column=0, columnspan=2, pady=4)
-
-        # --- Дом (адрес) ---
-        doma_frame = tk.LabelFrame(self.content, text="Дом", font=font_bold, padx=8, pady=6)
-        doma_frame.pack(fill=tk.X, padx=10, pady=6)
-
-        tk.Label(doma_frame, text="Существующий дом:", font=font_main).grid(row=0, column=0, sticky='w')
+        tk.Label(doma_frame, text="Существующий дом:", font=font_main).grid(row=1, column=0, sticky='w', pady=(8, 0))
         self.doma_var = tk.StringVar()
         self.doma_cb = ttk.Combobox(doma_frame, textvariable=self.doma_var, font=font_main,
                                      state='disabled', width=22)
-        self.doma_cb.grid(row=0, column=1, padx=6, sticky='w')
+        self.doma_cb.grid(row=1, column=1, padx=6, sticky='w', pady=(8, 0))
         self.doma_cb.bind('<<ComboboxSelected>>', self.on_doma_selected)
         self.doma_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
 
         self.label_current_uk = tk.Label(doma_frame, text="УК дома: —", font=font_main)
-        self.label_current_uk.grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 8))
+        self.label_current_uk.grid(row=2, column=0, columnspan=2, sticky='w', pady=(2, 8))
 
-        tk.Label(doma_frame, text="Номер нового дома:", font=font_main).grid(row=2, column=0, sticky='w')
+        tk.Label(doma_frame, text="Номер нового дома:", font=font_main).grid(row=3, column=0, sticky='w')
         self.entry_new_doma = tk.Entry(doma_frame, font=font_main, width=22, state='disabled')
-        self.entry_new_doma.grid(row=2, column=1, padx=6, sticky='w')
+        self.entry_new_doma.grid(row=3, column=1, padx=6, sticky='w')
         self.btn_add_doma = tk.Button(doma_frame, text="Добавить дом (с выбранной УК)", font=font_bold, bg='#d7efd7',
                                        state='disabled', command=self.add_doma)
-        self.btn_add_doma.grid(row=3, column=0, columnspan=2, pady=6)
+        self.btn_add_doma.grid(row=4, column=0, columnspan=2, pady=6)
 
         # --- Лифты (подъезд + тип, можно диапазоном) ---
-        lift_frame = tk.LabelFrame(self.content, text="Лифты", font=font_bold, padx=8, pady=6)
+        lift_frame = tk.LabelFrame(self.add_content, text="Лифты", font=font_bold, padx=8, pady=6)
         lift_frame.pack(fill=tk.X, padx=10, pady=6)
 
         tk.Label(lift_frame, text="Подъезды: с", font=font_main).grid(row=0, column=0, sticky='w')
@@ -2017,7 +2348,7 @@ class AddressesWindow(tk.Toplevel):
         self.btn_add_lift.grid(row=3, column=0, columnspan=2, pady=6)
 
         # --- Список лифтов выбранного дома ---
-        list_frame = tk.Frame(self.content)
+        list_frame = tk.Frame(self.add_content)
         list_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         tk.Label(list_frame, text="Лифты выбранного дома (подъезд — тип):", font=font_main).pack(anchor='w')
         scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL)
@@ -2027,8 +2358,137 @@ class AddressesWindow(tk.Toplevel):
         self.lifts_listbox.pack(side=tk.LEFT)
         scrollbar.pack(side=tk.LEFT, fill=tk.Y)
 
+        # ============================ ВКЛАДКА "РЕДАКТИРОВАТЬ" ============================
+        # --- Город ---
+        edit_city_frame = tk.LabelFrame(self.edit_content, text="Город", font=font_bold, padx=8, pady=6)
+        edit_city_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        self.edit_city_var = tk.StringVar()
+        self.edit_city_cb = ttk.Combobox(edit_city_frame, textvariable=self.edit_city_var, font=font_main,
+                                          state='readonly', width=30)
+        self.edit_city_cb.grid(row=0, column=0, columnspan=2, sticky='w')
+        self.edit_city_cb.bind('<<ComboboxSelected>>', self.edit_on_city_selected)
+        self.edit_city_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
+
+        tk.Label(edit_city_frame, text="Новое название:", font=font_main).grid(row=1, column=0, sticky='w', pady=4)
+        self.edit_city_entry = tk.Entry(edit_city_frame, font=font_main, width=22, state='disabled')
+        self.edit_city_entry.grid(row=1, column=1, padx=6, sticky='w')
+        self.btn_save_city = tk.Button(edit_city_frame, text="Сохранить город", font=font_main, bg='#d7e3ef',
+                                        state='disabled', command=self.save_city_edit)
+        self.btn_save_city.grid(row=2, column=0, columnspan=2, pady=4)
+
+        # --- Улица ---
+        edit_street_frame = tk.LabelFrame(self.edit_content, text="Улица", font=font_bold, padx=8, pady=6)
+        edit_street_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        tk.Label(edit_street_frame, text="Город:", font=font_main).grid(row=0, column=0, sticky='w')
+        self.edit_street_city_var = tk.StringVar()
+        self.edit_street_city_cb = ttk.Combobox(edit_street_frame, textvariable=self.edit_street_city_var,
+                                                 font=font_main, state='readonly', width=22)
+        self.edit_street_city_cb.grid(row=0, column=1, padx=6, sticky='w')
+        self.edit_street_city_cb.bind('<<ComboboxSelected>>', self.edit_on_street_city_selected)
+        self.edit_street_city_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
+
+        tk.Label(edit_street_frame, text="Улица:", font=font_main).grid(row=1, column=0, sticky='w', pady=(6, 0))
+        self.edit_street_var = tk.StringVar()
+        self.edit_street_cb = ttk.Combobox(edit_street_frame, textvariable=self.edit_street_var, font=font_main,
+                                            state='disabled', width=22)
+        self.edit_street_cb.grid(row=1, column=1, padx=6, sticky='w', pady=(6, 0))
+        self.edit_street_cb.bind('<<ComboboxSelected>>', self.edit_on_street_selected)
+        self.edit_street_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
+
+        tk.Label(edit_street_frame, text="Новое название:", font=font_main).grid(row=2, column=0, sticky='w', pady=4)
+        self.edit_street_entry = tk.Entry(edit_street_frame, font=font_main, width=22, state='disabled')
+        self.edit_street_entry.grid(row=2, column=1, padx=6, sticky='w')
+        self.btn_save_street = tk.Button(edit_street_frame, text="Сохранить улицу", font=font_main, bg='#d7e3ef',
+                                          state='disabled', command=self.save_street_edit)
+        self.btn_save_street.grid(row=3, column=0, columnspan=2, pady=4)
+
+        # --- УК ---
+        edit_uk_frame = tk.LabelFrame(self.edit_content, text="УК (управляющая компания)", font=font_bold,
+                                       padx=8, pady=6)
+        edit_uk_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        self.edit_uk_var = tk.StringVar()
+        self.edit_uk_cb = ttk.Combobox(edit_uk_frame, textvariable=self.edit_uk_var, font=font_main,
+                                        state='readonly', width=30)
+        self.edit_uk_cb.grid(row=0, column=0, columnspan=2, sticky='w')
+        self.edit_uk_cb.bind('<<ComboboxSelected>>', self.edit_on_uk_selected)
+        self.edit_uk_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
+
+        tk.Label(edit_uk_frame, text="Новое название:", font=font_main).grid(row=1, column=0, sticky='w', pady=4)
+        self.edit_uk_entry = tk.Entry(edit_uk_frame, font=font_main, width=22, state='disabled')
+        self.edit_uk_entry.grid(row=1, column=1, padx=6, sticky='w')
+        self.btn_save_uk = tk.Button(edit_uk_frame, text="Сохранить УК", font=font_main, bg='#d7e3ef',
+                                      state='disabled', command=self.save_uk_edit)
+        self.btn_save_uk.grid(row=2, column=0, columnspan=2, pady=4)
+
+        # --- Дом ---
+        edit_doma_frame = tk.LabelFrame(self.edit_content, text="Дом", font=font_bold, padx=8, pady=6)
+        edit_doma_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        tk.Label(edit_doma_frame, text="Город:", font=font_main).grid(row=0, column=0, sticky='w')
+        self.edit_doma_city_var = tk.StringVar()
+        self.edit_doma_city_cb = ttk.Combobox(edit_doma_frame, textvariable=self.edit_doma_city_var,
+                                               font=font_main, state='readonly', width=22)
+        self.edit_doma_city_cb.grid(row=0, column=1, padx=6, sticky='w')
+        self.edit_doma_city_cb.bind('<<ComboboxSelected>>', self.edit_on_doma_city_selected)
+        self.edit_doma_city_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
+
+        tk.Label(edit_doma_frame, text="Улица:", font=font_main).grid(row=1, column=0, sticky='w', pady=(6, 0))
+        self.edit_doma_street_var = tk.StringVar()
+        self.edit_doma_street_cb = ttk.Combobox(edit_doma_frame, textvariable=self.edit_doma_street_var,
+                                                 font=font_main, state='disabled', width=22)
+        self.edit_doma_street_cb.grid(row=1, column=1, padx=6, sticky='w', pady=(6, 0))
+        self.edit_doma_street_cb.bind('<<ComboboxSelected>>', self.edit_on_doma_street_selected)
+        self.edit_doma_street_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
+
+        tk.Label(edit_doma_frame, text="Дом:", font=font_main).grid(row=2, column=0, sticky='w', pady=(6, 0))
+        self.edit_doma_var = tk.StringVar()
+        self.edit_doma_cb = ttk.Combobox(edit_doma_frame, textvariable=self.edit_doma_var, font=font_main,
+                                          state='disabled', width=22)
+        self.edit_doma_cb.grid(row=2, column=1, padx=6, sticky='w', pady=(6, 0))
+        self.edit_doma_cb.bind('<<ComboboxSelected>>', self.edit_on_doma_selected)
+        self.edit_doma_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
+
+        tk.Label(edit_doma_frame, text="Новый номер:", font=font_main).grid(row=3, column=0, sticky='w', pady=4)
+        self.edit_doma_number_entry = tk.Entry(edit_doma_frame, font=font_main, width=22, state='disabled')
+        self.edit_doma_number_entry.grid(row=3, column=1, padx=6, sticky='w')
+
+        tk.Label(edit_doma_frame, text="УК дома:", font=font_main).grid(row=4, column=0, sticky='w', pady=4)
+        self.edit_doma_uk_var = tk.StringVar()
+        self.edit_doma_uk_cb = ttk.Combobox(edit_doma_frame, textvariable=self.edit_doma_uk_var, font=font_main,
+                                             state='disabled', width=22)
+        self.edit_doma_uk_cb.grid(row=4, column=1, padx=6, sticky='w')
+        self.edit_doma_uk_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set())
+
+        self.btn_save_doma = tk.Button(edit_doma_frame, text="Сохранить дом", font=font_main, bg='#d7e3ef',
+                                        state='disabled', command=self.save_doma_edit)
+        self.btn_save_doma.grid(row=5, column=0, columnspan=2, pady=4)
+
         self.load_cities()
         self.load_uks()
+        self.edit_load_cities()
+
+    def _build_scrollable_tab(self, parent):
+        outer = tk.Frame(parent)
+        outer.pack(fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(outer, highlightthickness=0)
+        vscroll = tk.Scrollbar(outer, orient=tk.VERTICAL, command=canvas.yview)
+        content = tk.Frame(canvas)
+
+        content.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=content, anchor="nw")
+        canvas.configure(yscrollcommand=vscroll.set)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vscroll.pack(side=tk.RIGHT, fill=tk.Y)
+        return canvas, content
+
+    def _active_canvas(self):
+        return self.add_canvas if self.notebook.index(self.notebook.select()) == 0 else self.edit_canvas
 
     def _on_mousewheel(self, event):
         # Не прокручиваем окно, если колесо крутят над открытым выпадающим
@@ -2046,18 +2506,19 @@ class AddressesWindow(tk.Toplevel):
             return
         if isinstance(focused, ttk.Combobox):
             return
+        canvas = self._active_canvas()
         if getattr(event, 'num', None) == 4:
-            self.canvas.yview_scroll(-1, "units")
+            canvas.yview_scroll(-1, "units")
         elif getattr(event, 'num', None) == 5:
-            self.canvas.yview_scroll(1, "units")
+            canvas.yview_scroll(1, "units")
         else:
-            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _on_destroy(self, event):
         if event.widget is self:
-            self.canvas.unbind_all("<MouseWheel>")
-            self.canvas.unbind_all("<Button-4>")
-            self.canvas.unbind_all("<Button-5>")
+            self.unbind_all("<MouseWheel>")
+            self.unbind_all("<Button-4>")
+            self.unbind_all("<Button-5>")
 
     # ---------- Город ----------
     def load_cities(self):
@@ -2186,6 +2647,17 @@ class AddressesWindow(tk.Toplevel):
         self.uk_cb['values'] = [u['Название'] for u in self.uks]
         self.uk_var.set('')
         self.selected_uk_id = None
+        # держим в актуальном состоянии комбобоксы УК на вкладке "Редактировать"
+        if hasattr(self, 'edit_uk_cb'):
+            self.edit_uk_cb['values'] = [u['Название'] for u in self.uks]
+            self.edit_uk_var.set('')
+            self.edit_uk_entry.delete(0, tk.END)
+            self.edit_uk_entry.config(state='disabled')
+            self.btn_save_uk.config(state='disabled')
+            self.edit_selected_uk_id = None
+        if hasattr(self, 'edit_doma_uk_cb'):
+            self.edit_doma_uk_cb['values'] = [u['Название'] for u in self.uks]
+            self.edit_doma_uk_var.set('')
 
     def on_uk_selected(self, event=None):
         idx = self.uk_cb.current()
@@ -2295,6 +2767,283 @@ class AddressesWindow(tk.Toplevel):
         self.doma_cb.current(idx)
         self.on_doma_selected()
 
+    # ================= РЕДАКТИРОВАНИЕ (вкладка "Редактировать") =================
+    # ---------- Редактирование: Город ----------
+    def edit_load_cities(self):
+        self.edit_cities = self.cities
+        values = [c['Город'] for c in self.edit_cities]
+        self.edit_city_cb['values'] = values
+        self.edit_street_city_cb['values'] = values
+        self.edit_doma_city_cb['values'] = values
+        self.edit_city_var.set('')
+        self.edit_city_entry.delete(0, tk.END)
+        self.edit_city_entry.config(state='disabled')
+        self.btn_save_city.config(state='disabled')
+        self.edit_selected_city_id = None
+        self.edit_street_city_var.set('')
+        self.edit_street_filter_city_id = None
+        self.edit_reset_streets()
+        self.edit_doma_city_var.set('')
+        self.edit_doma_filter_city_id = None
+        self.edit_reset_doma_streets()
+
+    def edit_on_city_selected(self, event=None):
+        idx = self.edit_city_cb.current()
+        if idx < 0:
+            return
+        city = self.edit_cities[idx]
+        self.edit_selected_city_id = city['id']
+        self.edit_city_entry.config(state='normal')
+        self.edit_city_entry.delete(0, tk.END)
+        self.edit_city_entry.insert(0, city['Город'])
+        self.btn_save_city.config(state='normal')
+
+    def save_city_edit(self):
+        if not self.edit_selected_city_id:
+            return
+        name = self._capitalize_first(self.edit_city_entry.get().strip())
+        if not name:
+            mb.showwarning("Внимание", "Введите название города.", parent=self)
+            return
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id FROM {self.goroda_table} WHERE Город = ? AND id <> ?",
+                               (name, self.edit_selected_city_id))
+                if cursor.fetchone():
+                    mb.showwarning("Внимание", "Такой город уже есть в списке.", parent=self)
+                    return
+                cursor.execute(f"UPDATE {self.goroda_table} SET Город = ? WHERE id = ?",
+                               (name, self.edit_selected_city_id))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        mb.showinfo("Готово", "Город обновлён.", parent=self)
+        self.load_cities()
+        self.edit_load_cities()
+        if self.on_change:
+            self.on_change()
+
+    # ---------- Редактирование: Улица ----------
+    def edit_reset_streets(self):
+        self.edit_streets = []
+        self.edit_street_cb['values'] = []
+        self.edit_street_var.set('')
+        self.edit_street_cb.config(state='disabled')
+        self.edit_street_entry.delete(0, tk.END)
+        self.edit_street_entry.config(state='disabled')
+        self.btn_save_street.config(state='disabled')
+        self.edit_selected_street_id = None
+
+    def edit_on_street_city_selected(self, event=None):
+        idx = self.edit_street_city_cb.current()
+        if idx < 0:
+            return
+        self.edit_street_filter_city_id = self.edit_cities[idx]['id']
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id, Улица FROM {self.street_table} WHERE id_город = ? ORDER BY Улица",
+                               (self.edit_street_filter_city_id,))
+                self.edit_streets = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.edit_street_cb['values'] = [s['Улица'] for s in self.edit_streets]
+        self.edit_street_var.set('')
+        self.edit_street_cb.config(state='readonly')
+        self.edit_street_entry.delete(0, tk.END)
+        self.edit_street_entry.config(state='disabled')
+        self.btn_save_street.config(state='disabled')
+        self.edit_selected_street_id = None
+
+    def edit_on_street_selected(self, event=None):
+        idx = self.edit_street_cb.current()
+        if idx < 0:
+            return
+        street = self.edit_streets[idx]
+        self.edit_selected_street_id = street['id']
+        self.edit_street_entry.config(state='normal')
+        self.edit_street_entry.delete(0, tk.END)
+        self.edit_street_entry.insert(0, street['Улица'])
+        self.btn_save_street.config(state='normal')
+
+    def save_street_edit(self):
+        if not self.edit_selected_street_id:
+            return
+        name = self._capitalize_first(self.edit_street_entry.get().strip())
+        if not name:
+            mb.showwarning("Внимание", "Введите название улицы.", parent=self)
+            return
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id FROM {self.street_table} WHERE Улица = ? AND id_город = ? AND id <> ?",
+                               (name, self.edit_street_filter_city_id, self.edit_selected_street_id))
+                if cursor.fetchone():
+                    mb.showwarning("Внимание", "Такая улица уже есть в этом городе.", parent=self)
+                    return
+                cursor.execute(f"UPDATE {self.street_table} SET Улица = ? WHERE id = ?",
+                               (name, self.edit_selected_street_id))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        mb.showinfo("Готово", "Улица обновлена.", parent=self)
+        self.edit_on_street_city_selected()
+        if self.on_change:
+            self.on_change()
+
+    # ---------- Редактирование: УК ----------
+    def edit_on_uk_selected(self, event=None):
+        idx = self.edit_uk_cb.current()
+        if idx < 0:
+            return
+        uk = self.uks[idx]
+        self.edit_selected_uk_id = uk['id']
+        self.edit_uk_entry.config(state='normal')
+        self.edit_uk_entry.delete(0, tk.END)
+        self.edit_uk_entry.insert(0, uk['Название'])
+        self.btn_save_uk.config(state='normal')
+
+    def save_uk_edit(self):
+        if not self.edit_selected_uk_id:
+            return
+        name = self._capitalize_first(self.edit_uk_entry.get().strip())
+        if not name:
+            mb.showwarning("Внимание", "Введите название УК.", parent=self)
+            return
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id FROM {self.uk_table} WHERE Название = ? AND is_active = 1 AND id <> ?",
+                               (name, self.edit_selected_uk_id))
+                if cursor.fetchone():
+                    mb.showwarning("Внимание", "Такая УК уже есть в списке.", parent=self)
+                    return
+                cursor.execute(f"UPDATE {self.uk_table} SET Название = ? WHERE id = ?",
+                               (name, self.edit_selected_uk_id))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        mb.showinfo("Готово", "УК обновлена.", parent=self)
+        self.load_uks()
+        if self.on_change:
+            self.on_change()
+
+    # ---------- Редактирование: Дом ----------
+    def edit_reset_doma_streets(self):
+        self.edit_doma_streets = []
+        self.edit_doma_street_cb['values'] = []
+        self.edit_doma_street_var.set('')
+        self.edit_doma_street_cb.config(state='disabled')
+        self.edit_doma_filter_street_id = None
+        self.edit_reset_doma_list()
+
+    def edit_reset_doma_list(self):
+        self.edit_domas = []
+        self.edit_doma_cb['values'] = []
+        self.edit_doma_var.set('')
+        self.edit_doma_cb.config(state='disabled')
+        self.edit_doma_number_entry.delete(0, tk.END)
+        self.edit_doma_number_entry.config(state='disabled')
+        self.edit_doma_uk_var.set('')
+        self.edit_doma_uk_cb.config(state='disabled')
+        self.btn_save_doma.config(state='disabled')
+        self.edit_selected_doma_id = None
+
+    def edit_on_doma_city_selected(self, event=None):
+        idx = self.edit_doma_city_cb.current()
+        if idx < 0:
+            return
+        self.edit_doma_filter_city_id = self.edit_cities[idx]['id']
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id, Улица FROM {self.street_table} WHERE id_город = ? ORDER BY Улица",
+                               (self.edit_doma_filter_city_id,))
+                self.edit_doma_streets = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.edit_doma_street_cb['values'] = [s['Улица'] for s in self.edit_doma_streets]
+        self.edit_doma_street_var.set('')
+        self.edit_doma_street_cb.config(state='readonly')
+        self.edit_reset_doma_list()
+
+    def edit_on_doma_street_selected(self, event=None):
+        idx = self.edit_doma_street_cb.current()
+        if idx < 0:
+            return
+        self.edit_doma_filter_street_id = self.edit_doma_streets[idx]['id']
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f'''SELECT d.id, d.Номер, d.id_ук, u.Название AS uk_name
+                                    FROM {self.doma_table} d
+                                    LEFT JOIN {self.uk_table} u ON d.id_ук = u.id
+                                    WHERE d.id_улица = ? AND d.is_active = 1
+                                    ORDER BY d.Номер''', (self.edit_doma_filter_street_id,))
+                self.edit_domas = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.edit_doma_cb['values'] = [d['Номер'] for d in self.edit_domas]
+        self.edit_doma_var.set('')
+        self.edit_doma_cb.config(state='readonly')
+        self.edit_doma_number_entry.delete(0, tk.END)
+        self.edit_doma_number_entry.config(state='disabled')
+        self.edit_doma_uk_var.set('')
+        self.edit_doma_uk_cb.config(state='disabled')
+        self.btn_save_doma.config(state='disabled')
+        self.edit_selected_doma_id = None
+
+    def edit_on_doma_selected(self, event=None):
+        idx = self.edit_doma_cb.current()
+        if idx < 0:
+            return
+        doma = self.edit_domas[idx]
+        self.edit_selected_doma_id = doma['id']
+        self.edit_doma_number_entry.config(state='normal')
+        self.edit_doma_number_entry.delete(0, tk.END)
+        self.edit_doma_number_entry.insert(0, doma['Номер'])
+        self.edit_doma_uk_cb.config(state='readonly')
+        self.edit_doma_uk_var.set(doma['uk_name'] or '')
+        self.btn_save_doma.config(state='normal')
+
+    def save_doma_edit(self):
+        if not self.edit_selected_doma_id:
+            return
+        number = self.edit_doma_number_entry.get().strip()
+        if not number:
+            mb.showwarning("Внимание", "Введите номер дома.", parent=self)
+            return
+        uk_idx = self.edit_doma_uk_cb.current()
+        if uk_idx < 0:
+            mb.showwarning("Внимание", "Выберите УК дома.", parent=self)
+            return
+        uk_id = self.uks[uk_idx]['id']
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id FROM {self.doma_table} WHERE Номер = ? AND id_улица = ? AND id <> ?",
+                               (number, self.edit_doma_filter_street_id, self.edit_selected_doma_id))
+                if cursor.fetchone():
+                    mb.showwarning("Внимание", "Такой адрес уже есть в списке.", parent=self)
+                    return
+                cursor.execute(f"UPDATE {self.doma_table} SET Номер = ?, id_ук = ? WHERE id = ?",
+                               (number, uk_id, self.edit_selected_doma_id))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        mb.showinfo("Готово", "Дом обновлён.", parent=self)
+        self.edit_on_doma_street_selected()
+        if self.on_change:
+            self.on_change()
+
     # ---------- Лифты (подъезд + тип, одним подъездом или диапазоном) ----------
     def _get_or_create_padik_id(self, cursor, number):
         cursor.execute(f"SELECT id FROM {self.padik_table} WHERE Номер = ?", (number,))
@@ -2377,6 +3126,385 @@ class AddressesWindow(tk.Toplevel):
             return
         self.entry_lift_type.delete(0, tk.END)
         self.load_lifts()
+
+
+#====ОКНО НАСТРОЙКИ ОБЩЕГО ПОЛЬЗОВАТЕЛЯ БД=============================================================
+class SharedUserSetupWindow(tk.Toplevel):
+    """
+    Мастер из двух шагов для админа:
+      1) подключение администратора (обычно root) — проверяем, что данные
+         верные, и запоминаем их;
+      2) создание общего пользователя MariaDB для всех рабочих ПК фирмы +
+         сохранение готового config.json — одной кнопкой сразу и то, и
+         другое, чтобы не заходить в HeidiSQL и не объяснять коллегам,
+         какие данные куда вписывать вручную.
+
+    "Хост для подключения сейчас" (шаг 1) и "IP сервера для config.json"
+    (шаг 2) -- разные поля специально: этот инструмент обычно запускают
+    прямо на сервере БД (тогда подключение — 127.0.0.1), а другие ПК
+    должны стучаться на его настоящий IP в локальной сети, а не на
+    loopback-адрес.
+    """
+
+    # Имена таблиц и прочие поля config.json, не относящиеся к подключению --
+    # совпадают со всеми установками (см. config.json.example), поэтому не
+    # выносятся в форму.
+    _CONFIG_TABLE_DEFAULTS = {
+        "telegrambot": "enabled",
+        "table_goroda": "goroda",
+        "table_street": "street",
+        "table_doma": "doma",
+        "table_padik": "padik",
+        "table_lifts": "lifts",
+        "table_zayavki": "zayavki",
+        "table_workers": "workers",
+        "table_uk": "uk",
+    }
+
+    def __init__(self, first_run=False):
+        """
+        first_run=True -- вызывается при самом первом запуске mitol.exe,
+        когда рядом ещё нет config.json (см. __main__ внизу файла): тогда
+        готовый файл сохраняется сразу как './config.json' без диалога
+        "Сохранить как", а после успеха окно закрывается само, чтобы
+        основной запуск продолжился уже с новым config.json.
+        """
+        super().__init__()
+        self.first_run = first_run
+        self.title("Первый запуск — подключение к базе данных" if first_run
+                    else "Настройка общего пользователя MariaDB")
+        self.resizable(False, False)
+        self.grab_set()
+        self.wm_attributes('-topmost', 1)
+
+        self.font_main = ('Calibri', 12)
+        self.font_bold = ('Calibri', 12, 'bold')
+        self.pad = dict(padx=10, pady=4, sticky='w')
+
+        self.admin_creds = None  # заполняется после успешного шага 1
+        self.entries = {}
+
+        self._build_step1()
+
+    def _center(self):
+        self.update_idletasks()
+        self.geometry(f"+{(self.winfo_screenwidth() - self.winfo_width()) // 2}"
+                      f"+{(self.winfo_screenheight() - self.winfo_height()) // 2}")
+
+    def _clear(self):
+        for w in self.winfo_children():
+            w.destroy()
+        self.entries = {}
+
+    def _add_field(self, parent, row, key, label, default="", show=None):
+        tk.Label(parent, text=label, font=self.font_main).grid(row=row, column=0, **self.pad)
+        e = tk.Entry(parent, font=self.font_main, width=28, show=show)
+        e.insert(0, default)
+        e.grid(row=row, column=1, **self.pad)
+        self.entries[key] = e
+        return e
+
+    # ---------- Шаг 1: подключение администратора ----------
+    def _build_step1(self):
+        self._clear()
+
+        frame = tk.Frame(self, padx=16, pady=16)
+        frame.pack()
+
+        row = 0
+        if self.first_run:
+            tk.Label(frame, text="config.json не найден — это первый запуск программы.\n"
+                                  "Подключись к MariaDB как администратор, чтобы создать\n"
+                                  "пользователя приложения и настройки автоматически.",
+                     font=self.font_main, justify='left', fg='gray20') \
+                .grid(row=row, column=0, columnspan=2, pady=(0, 10), sticky='w')
+            row += 1
+
+        tk.Label(frame, text="Шаг 1 из 2 — подключение администратора",
+                 font=self.font_bold).grid(row=row, column=0, columnspan=2, pady=(0, 8), sticky='w')
+        row += 1
+
+        self._add_field(frame, row, "host", "Хост MariaDB:", "127.0.0.1"); row += 1
+        self._add_field(frame, row, "port", "Порт:", "3306"); row += 1
+        self._add_field(frame, row, "admin_user", "Админ-логин:", "root"); row += 1
+        self._add_field(frame, row, "admin_password", "Админ-пароль:", "", show="*"); row += 1
+
+        tk.Label(frame, text="(нужны права CREATE USER / GRANT -- обычно это root)",
+                 font=('Calibri', 10), fg='gray30').grid(row=row, column=0, columnspan=2, sticky='w', pady=(0, 10))
+        row += 1
+
+        tk.Button(frame, text="Подключиться", font=self.font_bold, bg='#d7efd7',
+                  command=self._connect_and_go_step2).grid(row=row, column=0, columnspan=2, pady=(6, 0))
+
+        self._center()
+
+    def _connect_and_go_step2(self):
+        v = {k: e.get().strip() for k, e in self.entries.items()}
+
+        if not v["admin_password"]:
+            mb.showwarning("Внимание", "Введите админ-пароль.", parent=self)
+            return
+        try:
+            port = int(v["port"])
+        except ValueError:
+            mb.showwarning("Внимание", "Порт должен быть числом.", parent=self)
+            return
+
+        try:
+            conn = mariadb.connect(
+                host=v["host"],
+                port=port,
+                user=v["admin_user"],
+                password=v["admin_password"],
+            )
+            conn.close()
+        except mariadb.Error as e:
+            mb.showerror("Ошибка подключения",
+                          f"Не удалось подключиться как {v['admin_user']}:\n{e}", parent=self)
+            return
+
+        self.admin_creds = {
+            "host": v["host"], "port": port,
+            "user": v["admin_user"], "password": v["admin_password"],
+        }
+        self._build_step2()
+
+    # ---------- Шаг 2: создание пользователя + сохранение config.json ----------
+    def _build_step2(self):
+        self._clear()
+
+        frame = tk.Frame(self, padx=16, pady=16)
+        frame.pack()
+
+        local_ips = self._list_local_ips()
+        local_ip = local_ips[0] if local_ips else self._guess_local_ip()
+
+        tk.Label(frame, text="Шаг 2 из 2 — новый общий пользователь для приложения",
+                 font=self.font_bold).grid(row=0, column=0, columnspan=2, pady=(0, 8), sticky='w')
+
+        self._add_field(frame, 1, "db_name", "База данных:", "vostok_db")
+        self._add_field(frame, 2, "new_user", "Логин:", "mitol_app")
+        self._add_field(frame, 3, "new_password", "Пароль:", "", show="*")
+        self._add_field(frame, 4, "subnet", "Маска подсети (host для GRANT):", self._guess_subnet_mask(local_ip))
+
+        if len(local_ips) > 1:
+            hint = (f"(у этого компьютера несколько сетей: {', '.join(local_ips)}\n"
+                    f"выбран {local_ip} -- если это не тот роутер/сеть, где остальные ПК,\n"
+                    f"поправь IP и маску вручную; частые обманки: VPN, Docker/WSL, VirtualBox)")
+        else:
+            hint = (f"(этот компьютер сейчас в сети: {local_ip} -- маска выше подобрана по нему,\n"
+                    f"поменяй если сервер БД в другой подсети)")
+        tk.Label(frame, text=hint, font=('Calibri', 10), fg='gray30', justify='left') \
+            .grid(row=5, column=0, columnspan=2, sticky='w', pady=(0, 10))
+
+        tk.Label(frame, text="IP сервера БД (видимый из сети):", font=self.font_main) \
+            .grid(row=6, column=0, **self.pad)
+        config_host_cb = ttk.Combobox(frame, font=self.font_main, width=26,
+                                       values=local_ips or [local_ip])
+        config_host_cb.set(local_ip)
+        config_host_cb.grid(row=6, column=1, **self.pad)
+        # Маска подсети должна следовать за выбранным IP -- иначе после
+        # ручной смены IP (например, выбрали не тот адаптер из списка)
+        # маска осталась бы от старого значения и GRANT ушёл бы не туда.
+        config_host_cb.bind('<<ComboboxSelected>>', self._on_config_host_changed)
+        config_host_cb.bind('<KeyRelease>', self._on_config_host_changed)
+        self.entries["config_host"] = config_host_cb
+
+        self._add_field(frame, 7, "pc_id", "PC ID для этого файла:", "1")
+
+        tk.Label(frame, text="(у каждого ПК должен быть свой PC ID -- вернись на этот шаг\n"
+                              "и сохрани файл заново с новым числом для каждого следующего ПК)",
+                 font=('Calibri', 10), fg='gray30', justify='left') \
+            .grid(row=8, column=0, columnspan=2, sticky='w', pady=(0, 10))
+
+        btn_row = tk.Frame(frame)
+        btn_row.grid(row=9, column=0, columnspan=2, pady=(6, 0))
+        tk.Button(btn_row, text="Назад", font=self.font_main,
+                  command=self._build_step1).pack(side=tk.LEFT, padx=(0, 8))
+        btn_text = "Создать пользователя и запустить программу" if self.first_run \
+            else "Создать пользователя и сохранить config.json"
+        tk.Button(btn_row, text=btn_text, font=self.font_bold,
+                  bg='#d7efd7', command=self.create_user_and_save).pack(side=tk.LEFT)
+
+        self._center()
+
+    @staticmethod
+    def _list_local_ips() -> list:
+        """
+        Все IPv4-адреса, назначенные сетевым адаптерам этого компьютера
+        (Wi-Fi/Ethernet, но также VPN, Docker/WSL, VirtualBox и т.п. -- их
+        не отличить друг от друга штатными средствами без сторонних
+        библиотек). Отсортированы так, чтобы обычная домашняя/офисная сеть
+        роутера (192.168.x.x) шла первой, а диапазоны, которые чаще всего
+        оказываются VPN/виртуальными адаптерами (172.16-31.x.x), — последними.
+        """
+        try:
+            _, _, addrs = socket.gethostbyname_ex(socket.gethostname())
+        except Exception:
+            addrs = []
+
+        seen = set()
+        result = []
+        for ip in addrs:
+            if ip in seen or ip.startswith("127.") or ip.startswith("169.254."):
+                continue
+            seen.add(ip)
+            result.append(ip)
+
+        def priority(ip):
+            if ip.startswith("192.168."):
+                return 0
+            second = ip.split(".")[1] if "." in ip else ""
+            if ip.startswith("172.") and second.isdigit() and 16 <= int(second) <= 31:
+                return 2  # частый диапазон VPN/Docker/WSL/VirtualBox -- в конец списка
+            return 1
+
+        result.sort(key=priority)
+        return result
+
+    @classmethod
+    def _guess_local_ip(cls) -> str:
+        """Лучший угадываемый IP -- первый по приоритету из _list_local_ips()."""
+        ips = cls._list_local_ips()
+        if ips:
+            return ips[0]
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                s.connect(("8.8.8.8", 80))
+                return s.getsockname()[0]
+            finally:
+                s.close()
+        except Exception:
+            return "192.168.0.10"
+
+    @staticmethod
+    def _guess_subnet_mask(ip: str) -> str:
+        parts = ip.split(".")
+        if len(parts) == 4:
+            return ".".join(parts[:3]) + ".%"
+        return "192.168.0.%"
+
+    def _on_config_host_changed(self, event=None):
+        ip = self.entries["config_host"].get().strip()
+        if not ip:
+            return
+        self.entries["subnet"].delete(0, tk.END)
+        self.entries["subnet"].insert(0, self._guess_subnet_mask(ip))
+
+    def create_user_and_save(self):
+        v = {k: e.get().strip() for k, e in self.entries.items()}
+
+        if not v["new_password"]:
+            mb.showwarning("Внимание", "Введите пароль для нового пользователя.", parent=self)
+            return
+        if not v["config_host"]:
+            mb.showwarning("Внимание", "Укажи IP сервера БД для config.json.", parent=self)
+            return
+        if v["config_host"] in ("127.0.0.1", "localhost"):
+            if not mb.askyesno(
+                "Внимание",
+                "IP сервера указан как 127.0.0.1 (localhost) -- с другого компьютера\n"
+                "по такому адресу подключиться нельзя, это сработает только на этом\n"
+                "же ПК. Продолжить всё равно?",
+                parent=self,
+            ):
+                return
+        try:
+            pc_id = int(v["pc_id"])
+        except ValueError:
+            mb.showwarning("Внимание", "PC ID должен быть числом.", parent=self)
+            return
+
+        # --- создание пользователя под сохранёнными на шаге 1 админ-данными ---
+        try:
+            conn = mariadb.connect(**self.admin_creds)
+        except mariadb.Error as e:
+            mb.showerror("Ошибка подключения", f"Не удалось подключиться:\n{e}", parent=self)
+            return
+
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                f"CREATE USER IF NOT EXISTS '{v['new_user']}'@'{v['subnet']}' "
+                f"IDENTIFIED BY '{v['new_password']}'"
+            )
+            # На случай, если пользователь уже был создан раньше -- обновляем пароль,
+            # чтобы повторный запуск с новым паролем тоже срабатывал.
+            cur.execute(
+                f"ALTER USER '{v['new_user']}'@'{v['subnet']}' "
+                f"IDENTIFIED BY '{v['new_password']}'"
+            )
+            cur.execute(
+                f"GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES "
+                f"ON `{v['db_name']}`.* TO '{v['new_user']}'@'{v['subnet']}'"
+            )
+            cur.execute("FLUSH PRIVILEGES")
+            conn.commit()
+        except mariadb.Error as e:
+            mb.showerror("Ошибка", f"Не удалось создать пользователя:\n{e}", parent=self)
+            return
+        finally:
+            conn.close()
+
+        # --- сразу сохраняем готовый config.json ---
+        config = {
+            "db_host": v["config_host"],
+            "db_user": v["new_user"],
+            "db_password": v["new_password"],
+            "db_name": v["db_name"],
+            "db_port": self.admin_creds["port"],
+            "pc_id": pc_id,
+            **self._CONFIG_TABLE_DEFAULTS,
+        }
+
+        if self.first_run:
+            # Первый запуск -- пишем сразу в рабочую папку под тем же именем,
+            # которое читает DataBaseManager, без диалога "Сохранить как".
+            path = "config.json"
+        else:
+            path = filedialog.asksaveasfilename(
+                parent=self,
+                title="Сохранить config.json для рабочего ПК",
+                defaultextension=".json",
+                initialfile="config.json",
+                filetypes=[("JSON", "*.json")],
+            )
+            if not path:
+                mb.showinfo(
+                    "Готово частично",
+                    f"Пользователь «{v['new_user']}»@«{v['subnet']}» создан, "
+                    "но config.json не сохранён (отменено). Изменишь PC ID и\n"
+                    "нажми кнопку ещё раз, если нужно только сохранить файл.",
+                    parent=self,
+                )
+                return
+
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(config, f, ensure_ascii=False, indent=4)
+        except OSError as e:
+            mb.showerror("Ошибка", f"Пользователь создан, но не удалось сохранить файл:\n{e}", parent=self)
+            return
+
+        if self.first_run:
+            mb.showinfo(
+                "Готово",
+                f"Пользователь «{v['new_user']}»@«{v['subnet']}» создан, config.json сохранён.\n"
+                "Сейчас запустится программа.",
+                parent=self,
+            )
+            self.destroy()
+            return
+
+        mb.showinfo(
+            "Готово",
+            f"Пользователь «{v['new_user']}»@«{v['subnet']}» создан.\n"
+            f"Файл сохранён:\n{path}\n\n"
+            f"Скопируй его рядом с mitol.exe на рабочий ПК (PC ID = {pc_id}).\n"
+            "Для следующего ПК поменяй PC ID выше и нажми кнопку ещё раз.",
+            parent=self,
+        )
 
 
 #====НАВЕДЕНИЕ МЫШКОЙ НА КОММЕНТ=====================================================================
@@ -3280,12 +4408,86 @@ if __name__ == "__main__":
         sys.exit()
     time_format = "%d.%m.%y, %H:%M"
     root = tk.Tk()
+    try:
+        # subsample -- icon.png хранится в большом разрешении (под другие
+        # нужды), а не как готовая иконка 16x16/32x32; ужимаем, чтобы Tk не
+        # тягал полноразмерную картинку в заголовок окна.
+        _app_icon = tk.PhotoImage(file='icon.png').subsample(8, 8)
+        # default=True -- ставит иконку не только на root, но и на все
+        # Toplevel-окна (Сотрудники, Адреса и т.д.), создаваемые позже без
+        # своей иконки -- иначе у них было бы стандартное "пёрышко" Tk.
+        root.iconphoto(True, _app_icon)
+    except Exception:
+        pass
+
+    # Первый запуск -- config.json ещё не создан (ни разу не настраивали
+    # подключение к БД на этом ПК). Вместо падения внутри DataBaseManager
+    # открываем мастер настройки (тот же, что и в меню "Общий пользователь
+    # БД"), который сам создаст пользователя MariaDB и сохранит config.json,
+    # а после — обычный запуск продолжится уже с ним.
+    if not os.path.exists('config.json'):
+        root.withdraw()
+        setup_win = SharedUserSetupWindow(first_run=True)
+        root.wait_window(setup_win)
+        if not os.path.exists('config.json'):
+            sys.exit()
+        root.deiconify()
+
     app = Main(root)
     app.pack()
-    root.title("Электронный журнал")
+    try:
+        from updater import APP_VERSION as _app_version
+    except Exception:
+        _app_version = "?"
+    root.title(f"Электронный журнал — v{_app_version}")
     root.geometry("1920x1080")
-    # root.iconphoto(False, tk.PhotoImage(file='icon.png'))
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
+
+    # Проверка обновлений — периодическая, работает всё время, пока
+    # приложение открыто (не только при запуске).
+    try:
+        from updater import check_for_update, show_update_dialog, apply_update, _log_error
+        _updater_available = True
+    except Exception:
+        _updater_available = False
+
+    if _updater_available:
+        UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000  # 6 часов
+
+        def _check_and_offer_update():
+            try:
+                upd = check_for_update()
+                if upd:
+                    if show_update_dialog(upd, parent=root):
+                        apply_update(upd["download_url"], parent_widget=root)
+            except Exception as e:
+                _log_error("_check_and_offer_update", e)
+            finally:
+                root.after(UPDATE_CHECK_INTERVAL_MS, _check_and_offer_update)
+
+        root.after(800, _check_and_offer_update)
+
+    # Автобэкап — проверяем раз в 30 минут, реально бэкапим не чаще раза
+    # в сутки (см. backup.py). Локальная копия в папке Backup рядом с
+    # программой делается без какой-либо настройки со стороны пользователя.
+    try:
+        import backup as backup_module
+        _backup_available = True
+    except Exception:
+        _backup_available = False
+
+    if _backup_available:
+        BACKUP_CHECK_INTERVAL_MS = 30 * 60 * 1000  # 30 минут
+
+        def _auto_backup_tick():
+            try:
+                if backup_module.needs_backup(LOCAL_BACKUP_DIR):
+                    app.backup_now(silent=True)
+            finally:
+                root.after(BACKUP_CHECK_INTERVAL_MS, _auto_backup_tick)
+
+        root.after(10_000, _auto_backup_tick)
+
     root.mainloop()
 
 

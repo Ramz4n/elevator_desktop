@@ -17,5 +17,16 @@ mitol.lock
 build/
 dist/
 
+# упакованные релизы для автообновления (заливаются на GitHub, не в git)
+release/
+
+# автообновление — служебные файлы конкретной установки
+updater_debug.log
+_updater.bat
+
+# локальные резервные копии БД (см. backup.py)
+Backup/
+
 # IDE
 .idea/
+mitol.spec

@@ -1,0 +1,17 @@
+{
+    "db_host": "192.168.0.10",
+    "db_user": "mitol_app",
+    "db_password": "CHANGE_ME_STRONG_PASSWORD",
+    "db_name": "vostok_db",
+    "db_port": 3306,
+    "pc_id": 1,
+    "telegrambot": "enabled",
+    "table_goroda": "goroda",
+    "table_street": "street",
+    "table_doma": "doma",
+    "table_padik": "padik",
+    "table_lifts": "lifts",
+    "table_zayavki": "zayavki",
+    "table_workers": "workers",
+    "table_uk": "uk"
+}
