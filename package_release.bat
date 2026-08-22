@@ -39,9 +39,15 @@ if not exist "%SRC%\mitol.exe" (
     exit /b 1
 )
 
-echo === Готовлю чистую копию для релиза (без config.json и mitol.lock) ===
+rem --- /XD Backup -- папка с локальными резервными копиями (см. backup.py)
+rem     могла появиться в dist\, если exe запускали оттуда для проверки --
+rem     в релиз она попадать не должна (там реальные данные БД).
+rem     /XF config.json mitol.lock -- то же самое для настроек подключения
+rem     и файла-блокировки конкретной установки. updater_debug.log --
+rem     журнал отладки, тоже не для релиза.
+echo === Готовлю чистую копию для релиза (без Backup, config.json и mitol.lock) ===
 if exist "%STAGE%" rmdir /S /Q "%STAGE%"
-robocopy "%SRC%" "%STAGE%" /E /XF config.json mitol.lock >nul
+robocopy "%SRC%" "%STAGE%" /E /XD Backup /XF config.json mitol.lock updater_debug.log >nul
 
 if not exist "%OUT%" mkdir "%OUT%"
 set "ZIP=%OUT%\mitol_v%NEWVER%.zip"
@@ -59,7 +65,7 @@ rmdir /S /Q "%STAGE%"
 
 echo.
 echo === Готово: %ZIP% ===
-echo === Проверь перед заливкой на GitHub: unzip и убедись, что там НЕТ config.json ===
+echo === Проверь перед заливкой на GitHub: unzip и убедись, что там НЕТ config.json и папки Backup ===
 echo.
 echo === На GitHub (репозиторий Ramz4n/mitol_releases) -^> Releases -^> Draft a new release: ===
 echo ===   тег:   v%NEWVER%           (или v%NEWVER%-force для обязательного) ===

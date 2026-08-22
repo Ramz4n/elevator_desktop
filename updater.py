@@ -282,6 +282,11 @@ def show_update_dialog(update_info: dict, parent=None) -> bool:
         tk.Label(f, text=changes, font=('Calibri', 12),
                  anchor='w', justify='left', wraplength=360).pack(fill=tk.X, pady=(2, 14))
 
+    tk.Label(f, text="После установки ничего открывать не нужно — программа\n"
+                      "закроется и перезапустится сама.",
+             font=('Calibri', 11), fg='gray30', justify='left') \
+        .pack(anchor='w', pady=(0, 10))
+
     result = [False]
 
     btn_frame = tk.Frame(f)
@@ -396,11 +401,14 @@ def apply_update(download_url: str, parent_widget=None) -> None:
             # принадлежит этой установке клиента, а не релизу: настройки
             # подключения к БД (config.json), файл-блокировку запущенного
             # процесса (mitol.lock) и сам bat-скрипт (иначе он удалит себя
-            # раньше времени).
+            # раньше времени). /XD Backup -- не трогает папку с локальными
+            # резервными копиями (см. backup.py) -- без этого /MIR стирал бы
+            # её как "лишнее", ведь в архиве обновления её нет.
             bat_content = (
                 "@echo off\n"
                 "timeout /t 2 /nobreak >nul\n"
                 f'robocopy "{new_root}" "{install_dir}" /MIR '
+                f'/XD Backup '
                 f'/XF config.json mitol.lock _updater.bat >nul\n'
                 f'rmdir /S /Q "{tmp_dir}"\n'
                 f'start "" "{exe_path}"\n'
