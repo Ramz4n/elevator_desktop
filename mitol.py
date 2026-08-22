@@ -1,4 +1,22 @@
 from imports import *
+import msvcrt
+
+_lock_file_handle = None
+
+
+def acquire_single_instance_lock():
+    """
+    Пытается захватить эксклюзивную блокировку локального файла.
+    Если файл уже заблокирован другим запущенным процессом mitol.py — возвращает False.
+    """
+    global _lock_file_handle
+    try:
+        _lock_file_handle = open('mitol.lock', 'w')
+        msvcrt.locking(_lock_file_handle.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError:
+        return False
+    return True
+
 
 class Main(tk.Frame):
     def __init__(self, root):
@@ -8,6 +26,12 @@ class Main(tk.Frame):
         root.resizable(False, True)
         self.session = Session()
         self.db_manager = DataBaseManager()
+        try:
+            self.db_manager.ensure_schema()
+        except Exception as e:
+            mb.showerror("Ошибка базы данных", str(e))
+            root.destroy()
+            return
         self.tables = self.db_manager.db_tables()
         self.workers = self.tables['table_workers']
         self.goroda = self.tables['table_goroda']
@@ -33,7 +57,10 @@ class Main(tk.Frame):
         fm.add_command(label="Дневная статистика", command=self.afternoon_statistic)
         fm.add_command(label="Остановки более суток", command=self.stop_more_1day)
         fm.add_command(label="Выделить все заявки", command=self.select_all_zayavki)
-        fm.add_command(label="Сотрудники", command=self.open_workers_window)
+        add_menu = Menu(m, font=20)
+        m.add_cascade(label="Добавить", menu=add_menu)
+        add_menu.add_command(label="Сотрудники", command=self.open_workers_window)
+        add_menu.add_command(label="Адреса", command=self.open_addresses_window)
         # =======1 ОСНОВНОЙ TOOLBAR====================================================================
         toolbar_general = tk.Frame(borderwidth=1, relief="raised")
         toolbar_general.pack(side=tk.TOP, fill=tk.X)
@@ -119,6 +146,7 @@ class Main(tk.Frame):
         self.canvas_city = tk.Canvas(toolbar_city, width=100)
         y_scrollbar_city = ttk.Scrollbar(toolbar_city, orient="vertical", command=self.canvas_city.yview)
         scrollable_frame_city = ttk.Frame(self.canvas_city)
+        self.scrollable_frame_city = scrollable_frame_city
 
         scrollable_frame_city.bind(
             "<Configure>",
@@ -877,7 +905,7 @@ class Main(tk.Frame):
                    LEFT JOIN {self.workers} m2 ON z.id_исполнитель = m2.id'''
 
 
-    def event_of_button(self, type_button, address=None, calendar1=None, calendar2=None, callback=None):
+    def event_of_button(self, type_button, city=None, address=None, calendar1=None, calendar2=None, callback=None):
         """
     Загружает и отображает заявки в Treeview в зависимости от нажатой кнопки фильтра.
     Является основным методом обновления таблицы — вызывается как при нажатии кнопок,
@@ -1001,14 +1029,19 @@ class Main(tk.Frame):
                     self.reset_entry_num_placeholder()
                     self.session.delete("type_button")
                     self.session.set("type_button", "search")
+                    where_added = False
+                    if city:
+                        query += f' WHERE g.город = "{city}"'
+                        where_added = True
                     if address:
-                        query += f'''  WHERE CONCAT(s.улица, ', ', d.номер, ', ', p.номер) LIKE "%{address}%"'''
+                        query += f' {"AND" if where_added else "WHERE"} CONCAT(s.улица, \', \', d.номер, \', \', p.номер) LIKE "%{address}%"'
+                        where_added = True
                     if calendar1 and calendar2:
                         time_obj2 = datetime.datetime.strptime(calendar2, '%d.%m.%y')
                         unix_time2 = int(time_obj2.timestamp()) + 86400
                         time_obj1 = datetime.datetime.strptime(calendar1, '%d.%m.%y')
                         unix_time1 = int(time_obj1.timestamp())
-                        query += f''' and Дата_заявки BETWEEN "{unix_time1}" and "{unix_time2}"'''
+                        query += f' {"AND" if where_added else "WHERE"} Дата_заявки BETWEEN "{unix_time1}" and "{unix_time2}"'
                     query += order
                 cursor.execute(query)
 
@@ -1592,6 +1625,34 @@ class Main(tk.Frame):
     def open_workers_window(self):
         WorkersWindow(self.db_manager, self.workers, on_change=self.reload_mechanics)
 
+    def open_addresses_window(self):
+        AddressesWindow(self.db_manager, self.tables, on_change=self.reload_cities)
+
+    def reload_cities(self):
+        """Перезагружает список городов из БД и обновляет радиокнопки в главном окне."""
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"select id, город from {self.goroda}")
+                data_cities = cursor.fetchall()
+        except mariadb.Error as e:
+            mb.showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+            return
+        current = self.value_city.get()
+        for widget in self.scrollable_frame_city.winfo_children():
+            widget.destroy()
+        for city in data_cities:
+            radiobutton = tk.Radiobutton(self.scrollable_frame_city, font=('Calibri', 16), text=city['город'],
+                                         variable=self.value_city,
+                                         value=city['город'])
+            radiobutton.pack(anchor="w")
+            radiobutton.bind("<MouseWheel>", self._on_mousewheel)
+            radiobutton.bind("<Button-4>", self._on_mousewheel)
+            radiobutton.bind("<Button-5>", self._on_mousewheel)
+        names = [c['город'] for c in data_cities]
+        if current not in names:
+            self.value_city.set(names[0] if names else '')
+
     def on_closing(self):
         result = askyesno(title="Подтвержение действия", message="Закрыть программу?")
         if result:
@@ -1803,6 +1864,521 @@ class WorkersWindow(tk.Toplevel):
             self.on_change()
 
 
+#====ОКНО АДРЕСОВ=====================================================================================
+class AddressesWindow(tk.Toplevel):
+    def __init__(self, db_manager, tables, on_change=None):
+        super().__init__()
+        self.db_manager = db_manager
+        self.goroda_table = tables['table_goroda']
+        self.street_table = tables['table_street']
+        self.doma_table = tables['table_doma']
+        self.padik_table = tables['table_padik']
+        self.lifts_table = tables['table_lifts']
+        self.uk_table = tables['table_uk']
+        self.on_change = on_change
+
+        self.cities = []
+        self.streets = []
+        self.uks = []
+        self.domas = []
+        self.selected_city_id = None
+        self.selected_street_id = None
+        self.selected_uk_id = None
+        self.selected_doma_id = None
+
+        self.title("Адреса")
+        self.resizable(True, True)
+        self.grab_set()
+        self.wm_attributes('-topmost', 1)
+
+        font_main = ('Calibri', 14)
+        font_bold = ('Calibri', 14, 'bold')
+
+        # --- Прокручиваемая область (окно может быть выше экрана) ---
+        window_width = 460
+        window_height = min(self.winfo_screenheight() - 100, 850)
+        self.geometry(f"{window_width}x{window_height}+{(self.winfo_screenwidth() - window_width) // 2}+30")
+        self.minsize(window_width, 300)
+
+        outer = tk.Frame(self)
+        outer.pack(fill=tk.BOTH, expand=True)
+        self.canvas = tk.Canvas(outer, highlightthickness=0)
+        vscroll = tk.Scrollbar(outer, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.content = tk.Frame(self.canvas)
+
+        self.content.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        self.canvas.create_window((0, 0), window=self.content, anchor="nw")
+        self.canvas.configure(yscrollcommand=vscroll.set)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vscroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-4>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-5>", self._on_mousewheel)
+        self.bind("<Destroy>", self._on_destroy)
+
+        # --- Город ---
+        city_frame = tk.LabelFrame(self.content, text="Город", font=font_bold, padx=8, pady=6)
+        city_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        self.city_var = tk.StringVar()
+        self.city_cb = ttk.Combobox(city_frame, textvariable=self.city_var, font=font_main,
+                                     state='readonly', width=30)
+        self.city_cb.grid(row=0, column=0, columnspan=2, sticky='w')
+        self.city_cb.bind('<<ComboboxSelected>>', self.on_city_selected)
+        self.city_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
+
+        tk.Label(city_frame, text="Новый город:", font=font_main).grid(row=1, column=0, sticky='w', pady=4)
+        self.entry_new_city = tk.Entry(city_frame, font=font_main, width=22)
+        self.entry_new_city.grid(row=1, column=1, padx=6, sticky='w')
+        tk.Button(city_frame, text="Добавить город", font=font_main, bg='#d7efd7',
+                  command=self.add_city).grid(row=2, column=0, columnspan=2, pady=4)
+
+        # --- Улица ---
+        street_frame = tk.LabelFrame(self.content, text="Улица", font=font_bold, padx=8, pady=6)
+        street_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        self.street_var = tk.StringVar()
+        self.street_cb = ttk.Combobox(street_frame, textvariable=self.street_var, font=font_main,
+                                       state='disabled', width=30)
+        self.street_cb.grid(row=0, column=0, columnspan=2, sticky='w')
+        self.street_cb.bind('<<ComboboxSelected>>', self.on_street_selected)
+        self.street_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
+
+        tk.Label(street_frame, text="Новая улица:", font=font_main).grid(row=1, column=0, sticky='w', pady=4)
+        self.entry_new_street = tk.Entry(street_frame, font=font_main, width=22)
+        self.entry_new_street.grid(row=1, column=1, padx=6, sticky='w')
+        tk.Button(street_frame, text="Добавить улицу", font=font_main, bg='#d7efd7',
+                  command=self.add_street).grid(row=2, column=0, columnspan=2, pady=4)
+
+        # --- УК ---
+        uk_frame = tk.LabelFrame(self.content, text="УК (управляющая компания)", font=font_bold, padx=8, pady=6)
+        uk_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        self.uk_var = tk.StringVar()
+        self.uk_cb = ttk.Combobox(uk_frame, textvariable=self.uk_var, font=font_main,
+                                   state='readonly', width=30)
+        self.uk_cb.grid(row=0, column=0, columnspan=2, sticky='w')
+        self.uk_cb.bind('<<ComboboxSelected>>', self.on_uk_selected)
+        self.uk_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
+
+        tk.Label(uk_frame, text="Новая УК:", font=font_main).grid(row=1, column=0, sticky='w', pady=4)
+        self.entry_new_uk = tk.Entry(uk_frame, font=font_main, width=22)
+        self.entry_new_uk.grid(row=1, column=1, padx=6, sticky='w')
+        tk.Button(uk_frame, text="Добавить УК", font=font_main, bg='#d7efd7',
+                  command=self.add_uk).grid(row=2, column=0, columnspan=2, pady=4)
+
+        # --- Дом (адрес) ---
+        doma_frame = tk.LabelFrame(self.content, text="Дом", font=font_bold, padx=8, pady=6)
+        doma_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        tk.Label(doma_frame, text="Существующий дом:", font=font_main).grid(row=0, column=0, sticky='w')
+        self.doma_var = tk.StringVar()
+        self.doma_cb = ttk.Combobox(doma_frame, textvariable=self.doma_var, font=font_main,
+                                     state='disabled', width=22)
+        self.doma_cb.grid(row=0, column=1, padx=6, sticky='w')
+        self.doma_cb.bind('<<ComboboxSelected>>', self.on_doma_selected)
+        self.doma_cb.bind('<<ComboboxSelected>>', lambda e: self.focus_set(), add='+')
+
+        self.label_current_uk = tk.Label(doma_frame, text="УК дома: —", font=font_main)
+        self.label_current_uk.grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 8))
+
+        tk.Label(doma_frame, text="Номер нового дома:", font=font_main).grid(row=2, column=0, sticky='w')
+        self.entry_new_doma = tk.Entry(doma_frame, font=font_main, width=22, state='disabled')
+        self.entry_new_doma.grid(row=2, column=1, padx=6, sticky='w')
+        self.btn_add_doma = tk.Button(doma_frame, text="Добавить дом (с выбранной УК)", font=font_bold, bg='#d7efd7',
+                                       state='disabled', command=self.add_doma)
+        self.btn_add_doma.grid(row=3, column=0, columnspan=2, pady=6)
+
+        # --- Лифты (подъезд + тип, можно диапазоном) ---
+        lift_frame = tk.LabelFrame(self.content, text="Лифты", font=font_bold, padx=8, pady=6)
+        lift_frame.pack(fill=tk.X, padx=10, pady=6)
+
+        tk.Label(lift_frame, text="Подъезды: с", font=font_main).grid(row=0, column=0, sticky='w')
+        entrance_frame = tk.Frame(lift_frame)
+        entrance_frame.grid(row=0, column=1, sticky='w')
+        self.entry_padik_from = tk.Entry(entrance_frame, font=font_main, width=5, state='disabled')
+        self.entry_padik_from.pack(side=tk.LEFT)
+        tk.Label(entrance_frame, text=" по ", font=font_main).pack(side=tk.LEFT)
+        self.entry_padik_to = tk.Entry(entrance_frame, font=font_main, width=5, state='disabled')
+        self.entry_padik_to.pack(side=tk.LEFT)
+        tk.Label(lift_frame, text="(для одного подъезда — только «с»)", font=('Calibri', 10)) \
+            .grid(row=1, column=0, columnspan=2, sticky='w')
+
+        tk.Label(lift_frame, text="Тип лифта:", font=font_main).grid(row=2, column=0, sticky='w', pady=(6, 0))
+        self.entry_lift_type = tk.Entry(lift_frame, font=font_main, width=18, state='disabled')
+        self.entry_lift_type.grid(row=2, column=1, padx=6, sticky='w', pady=(6, 0))
+
+        self.btn_add_lift = tk.Button(lift_frame, text="Добавить лифт", font=font_bold, bg='#d7efd7',
+                                       state='disabled', command=self.add_lift)
+        self.btn_add_lift.grid(row=3, column=0, columnspan=2, pady=6)
+
+        # --- Список лифтов выбранного дома ---
+        list_frame = tk.Frame(self.content)
+        list_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        tk.Label(list_frame, text="Лифты выбранного дома (подъезд — тип):", font=font_main).pack(anchor='w')
+        scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL)
+        self.lifts_listbox = tk.Listbox(list_frame, width=40, height=8, font=font_main,
+                                         yscrollcommand=scrollbar.set)
+        scrollbar.config(command=self.lifts_listbox.yview)
+        self.lifts_listbox.pack(side=tk.LEFT)
+        scrollbar.pack(side=tk.LEFT, fill=tk.Y)
+
+        self.load_cities()
+        self.load_uks()
+
+    def _on_mousewheel(self, event):
+        # Не прокручиваем окно, если колесо крутят над открытым выпадающим
+        # списком комбобокса (Город/Улица/УК/Дом) — иначе листается сразу и он, и окно.
+        widget = event.widget
+        if isinstance(widget, ttk.Combobox) or 'popdown' in str(widget):
+            return
+        # Пока фокус на комбобоксе, его список может быть открыт, даже если мышь
+        # уже увели на канвас — прокрутка фона в этот момент "отрывает" список от поля.
+        try:
+            focused = self.focus_get()
+        except KeyError:
+            # Фокус внутри самого выпадающего списка (popdown) — Tkinter не может
+            # превратить его внутреннее имя обратно в виджет. Список точно открыт.
+            return
+        if isinstance(focused, ttk.Combobox):
+            return
+        if getattr(event, 'num', None) == 4:
+            self.canvas.yview_scroll(-1, "units")
+        elif getattr(event, 'num', None) == 5:
+            self.canvas.yview_scroll(1, "units")
+        else:
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _on_destroy(self, event):
+        if event.widget is self:
+            self.canvas.unbind_all("<MouseWheel>")
+            self.canvas.unbind_all("<Button-4>")
+            self.canvas.unbind_all("<Button-5>")
+
+    # ---------- Город ----------
+    def load_cities(self):
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id, Город FROM {self.goroda_table} ORDER BY Город")
+                self.cities = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.city_cb['values'] = [c['Город'] for c in self.cities]
+        self.city_var.set('')
+        self.selected_city_id = None
+        self.reset_streets()
+
+    def reset_streets(self):
+        self.streets = []
+        self.street_cb['values'] = []
+        self.street_var.set('')
+        self.street_cb.config(state='disabled' if not self.selected_city_id else 'readonly')
+        self.selected_street_id = None
+        self.reset_doma()
+
+    def on_city_selected(self, event=None):
+        idx = self.city_cb.current()
+        if idx < 0:
+            return
+        self.selected_city_id = self.cities[idx]['id']
+        self.load_streets()
+
+    @staticmethod
+    def _capitalize_first(text):
+        return text[:1].upper() + text[1:].lower() if text else text
+
+    def add_city(self):
+        name = self._capitalize_first(self.entry_new_city.get().strip())
+        if not name:
+            mb.showwarning("Внимание", "Введите название города.", parent=self)
+            return
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id FROM {self.goroda_table} WHERE Город = ?", (name,))
+                if cursor.fetchone():
+                    mb.showwarning("Внимание", "Такой город уже есть в списке.", parent=self)
+                    return
+                cursor.execute(f"INSERT INTO {self.goroda_table} (Город) VALUES (?)", (name,))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.entry_new_city.delete(0, tk.END)
+        self.load_cities()
+        idx = list(self.city_cb['values']).index(name)
+        self.city_cb.current(idx)
+        self.on_city_selected()
+        if self.on_change:
+            self.on_change()
+
+    # ---------- Улица ----------
+    def load_streets(self):
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id, Улица FROM {self.street_table} WHERE id_город = ? ORDER BY Улица",
+                               (self.selected_city_id,))
+                self.streets = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.street_cb['values'] = [s['Улица'] for s in self.streets]
+        self.street_var.set('')
+        self.street_cb.config(state='readonly')
+        self.selected_street_id = None
+        self.reset_doma()
+
+    def on_street_selected(self, event=None):
+        idx = self.street_cb.current()
+        if idx < 0:
+            return
+        self.selected_street_id = self.streets[idx]['id']
+        self.entry_new_doma.config(state='normal')
+        self.btn_add_doma.config(state='normal')
+        self.doma_cb.config(state='readonly')
+        self.load_domas()
+
+    def add_street(self):
+        if not self.selected_city_id:
+            mb.showwarning("Внимание", "Сначала выберите город.", parent=self)
+            return
+        name = self._capitalize_first(self.entry_new_street.get().strip())
+        if not name:
+            mb.showwarning("Внимание", "Введите название улицы.", parent=self)
+            return
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id FROM {self.street_table} WHERE Улица = ? AND id_город = ?",
+                               (name, self.selected_city_id))
+                if cursor.fetchone():
+                    mb.showwarning("Внимание", "Такая улица уже есть в этом городе.", parent=self)
+                    return
+                cursor.execute(f"INSERT INTO {self.street_table} (Улица, id_город) VALUES (?, ?)",
+                               (name, self.selected_city_id))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.entry_new_street.delete(0, tk.END)
+        self.load_streets()
+        idx = list(self.street_cb['values']).index(name)
+        self.street_cb.current(idx)
+        self.on_street_selected()
+
+    # ---------- УК ----------
+    def load_uks(self):
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id, Название FROM {self.uk_table} WHERE is_active = 1 ORDER BY Название")
+                self.uks = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.uk_cb['values'] = [u['Название'] for u in self.uks]
+        self.uk_var.set('')
+        self.selected_uk_id = None
+
+    def on_uk_selected(self, event=None):
+        idx = self.uk_cb.current()
+        if idx < 0:
+            return
+        self.selected_uk_id = self.uks[idx]['id']
+
+    def add_uk(self):
+        name = self._capitalize_first(self.entry_new_uk.get().strip())
+        if not name:
+            mb.showwarning("Внимание", "Введите название УК.", parent=self)
+            return
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id, is_active FROM {self.uk_table} WHERE Название = ?", (name,))
+                existing = cursor.fetchone()
+                if existing and existing['is_active']:
+                    mb.showwarning("Внимание", "Такая УК уже есть в списке.", parent=self)
+                    return
+                if existing:
+                    cursor.execute(f"UPDATE {self.uk_table} SET is_active = 1 WHERE id = ?", (existing['id'],))
+                else:
+                    cursor.execute(f"INSERT INTO {self.uk_table} (Название, is_active) VALUES (?, 1)", (name,))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.entry_new_uk.delete(0, tk.END)
+        self.load_uks()
+        idx = list(self.uk_cb['values']).index(name)
+        self.uk_cb.current(idx)
+        self.on_uk_selected()
+
+    # ---------- Дом ----------
+    def reset_doma(self):
+        self.domas = []
+        self.doma_cb['values'] = []
+        self.doma_var.set('')
+        self.doma_cb.config(state='disabled')
+        self.entry_new_doma.config(state='disabled')
+        self.btn_add_doma.config(state='disabled')
+        self.selected_doma_id = None
+        self.label_current_uk.config(text="УК дома: —")
+        self._disable_lift_widgets()
+
+    def load_domas(self):
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f'''SELECT d.id, d.Номер, u.Название AS uk_name
+                                    FROM {self.doma_table} d
+                                    LEFT JOIN {self.uk_table} u ON d.id_ук = u.id
+                                    WHERE d.id_улица = ? AND d.is_active = 1
+                                    ORDER BY d.Номер''', (self.selected_street_id,))
+                self.domas = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.doma_cb['values'] = [d['Номер'] for d in self.domas]
+        self.doma_var.set('')
+        self.selected_doma_id = None
+        self.label_current_uk.config(text="УК дома: —")
+        self._disable_lift_widgets()
+
+    def on_doma_selected(self, event=None):
+        idx = self.doma_cb.current()
+        if idx < 0:
+            return
+        doma = self.domas[idx]
+        self.selected_doma_id = doma['id']
+        self.label_current_uk.config(text=f"УК дома: {doma['uk_name'] or '(не указана)'}")
+        self.entry_padik_from.config(state='normal')
+        self.entry_padik_to.config(state='normal')
+        self.entry_lift_type.config(state='normal')
+        self.btn_add_lift.config(state='normal')
+        self.load_lifts()
+
+    def add_doma(self):
+        if not self.selected_street_id:
+            mb.showwarning("Внимание", "Сначала выберите улицу.", parent=self)
+            return
+        if not self.selected_uk_id:
+            mb.showwarning("Внимание", "Сначала выберите УК (или добавьте новую).", parent=self)
+            return
+        number = self.entry_new_doma.get().strip()
+        if not number:
+            mb.showwarning("Внимание", "Введите номер дома.", parent=self)
+            return
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f"SELECT id FROM {self.doma_table} WHERE Номер = ? AND id_улица = ?",
+                               (number, self.selected_street_id))
+                if cursor.fetchone():
+                    mb.showwarning("Внимание", "Такой адрес уже есть в списке.", parent=self)
+                    return
+                cursor.execute(f"INSERT INTO {self.doma_table} (Номер, id_улица, id_ук, is_active) "
+                               f"VALUES (?, ?, ?, 1)", (number, self.selected_street_id, self.selected_uk_id))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.entry_new_doma.delete(0, tk.END)
+        self.load_domas()
+        idx = list(self.doma_cb['values']).index(number)
+        self.doma_cb.current(idx)
+        self.on_doma_selected()
+
+    # ---------- Лифты (подъезд + тип, одним подъездом или диапазоном) ----------
+    def _get_or_create_padik_id(self, cursor, number):
+        cursor.execute(f"SELECT id FROM {self.padik_table} WHERE Номер = ?", (number,))
+        row = cursor.fetchone()
+        if row:
+            return row['id']
+        cursor.execute(f"INSERT INTO {self.padik_table} (Номер) VALUES (?)", (number,))
+        return cursor.lastrowid
+
+    def _parse_padik_range(self):
+        from_text = self.entry_padik_from.get().strip()
+        to_text = self.entry_padik_to.get().strip() or from_text
+        if not from_text:
+            mb.showwarning("Внимание", "Укажите номер подъезда (поле «с»).", parent=self)
+            return None
+        try:
+            start = int(from_text)
+            end = int(to_text)
+        except ValueError:
+            mb.showwarning("Внимание", "Номер подъезда должен быть числом.", parent=self)
+            return None
+        if start > end:
+            start, end = end, start
+        return range(start, end + 1)
+
+    def _disable_lift_widgets(self):
+        self.entry_padik_from.delete(0, tk.END)
+        self.entry_padik_from.config(state='disabled')
+        self.entry_padik_to.delete(0, tk.END)
+        self.entry_padik_to.config(state='disabled')
+        self.entry_lift_type.delete(0, tk.END)
+        self.entry_lift_type.config(state='disabled')
+        self.btn_add_lift.config(state='disabled')
+        self.lifts_listbox.delete(0, tk.END)
+
+    def load_lifts(self):
+        self.lifts_listbox.delete(0, tk.END)
+        if not self.selected_doma_id:
+            return
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f'''SELECT p.Номер AS podjezd, l.Тип_лифта AS tip
+                                    FROM {self.lifts_table} l
+                                    JOIN {self.padik_table} p ON l.id_подъезд = p.id
+                                    WHERE l.id_дом = ?
+                                    ORDER BY p.Номер, l.Тип_лифта''', (self.selected_doma_id,))
+                rows = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        for r in rows:
+            self.lifts_listbox.insert(tk.END, f"{r['podjezd']} — {r['tip']}")
+
+    def add_lift(self):
+        if not self.selected_doma_id:
+            mb.showwarning("Внимание", "Сначала выберите дом.", parent=self)
+            return
+        numbers = self._parse_padik_range()
+        if numbers is None:
+            return
+        lift_type = self.entry_lift_type.get().strip()
+        if not lift_type:
+            mb.showwarning("Внимание", "Введите тип лифта.", parent=self)
+            return
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                for n in numbers:
+                    padik_id = self._get_or_create_padik_id(cursor, f"п.{n}")
+                    cursor.execute(f"SELECT id FROM {self.lifts_table} WHERE id_дом = ? AND id_подъезд = ? "
+                                   f"AND Тип_лифта = ?", (self.selected_doma_id, padik_id, lift_type))
+                    if not cursor.fetchone():
+                        cursor.execute(
+                            f"INSERT INTO {self.lifts_table} (id_дом, id_подъезд, Тип_лифта) VALUES (?, ?, ?)",
+                            (self.selected_doma_id, padik_id, lift_type))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}", parent=self)
+            return
+        self.entry_lift_type.delete(0, tk.END)
+        self.load_lifts()
+
+
 #====НАВЕДЕНИЕ МЫШКОЙ НА КОММЕНТ=====================================================================
 class Tooltip:
     def __init__(self, widget):
@@ -1978,7 +2554,6 @@ class Edit(tk.Toplevel):
                 data_towns = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.town_to_id = {i['город']: i['id'] for i in data_towns}
 
         town_d = [i['город'] for i in data_towns]
         g1 = [j for j in town_d]
@@ -2081,7 +2656,7 @@ class Edit(tk.Toplevel):
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
-                cursor.execute(f'''SELECT
+                cursor.execute(f'''SELECT DISTINCT
                                     {self.goroda}.id as goroda_id,
                                     {self.goroda}.город,
                                     CONCAT({self.street}.улица, ', ', {self.doma}.номер, ', ', {self.padik}.номер) as Адрес,
@@ -2177,11 +2752,6 @@ class Edit(tk.Toplevel):
         selected_dispetcher_id = self.fio_to_id.get(selected_dispetcher_fio)
         return selected_dispetcher_id
 
-    def get_selected_town_id(self):
-        selected_town = self.combobox_town.get()
-        selected_town_id = self.town_to_id.get(selected_town)
-        return selected_town_id
-
     def get_selected_adres_id(self):
         if self.address_combobox.get() == 'ВЫБРАТЬ АДРЕС':
             return self.address_combobox.get()
@@ -2253,7 +2823,8 @@ class Edit(tk.Toplevel):
         return False
 
     def save_and_close(self):
-        if self.get_selected_adres_id() == 'ВЫБРАТЬ АДРЕС' or self.selected_type.get() == 'ВЫБРАТЬ ЛИФТ':
+        selected_address = self.get_selected_adres_id()
+        if selected_address == 'ВЫБРАТЬ АДРЕС' or self.selected_type.get() == 'ВЫБРАТЬ ЛИФТ':
             self.grab_set()  # Блокируем доступ к другим окнам
             mb.showerror("Ошибка", "Вы не выбрали АДРЕС или ТИП ЛИФТА")
             self.grab_release()  # Разрешаем доступ к другим окнам
@@ -2269,14 +2840,18 @@ class Edit(tk.Toplevel):
             self.close_with_overlay()  # Просто закрываем окно, если ничего не изменилось
             return
 
+        # Город/улица/дом/подъезд/лифт берём из ОДНОГО результата get_selected_adres_id(),
+        # а не вычисляем город отдельным запросом — иначе id_город может разойтись
+        # с городом, которому реально принадлежит выбранная улица.
+        address = selected_address[0]
         self.view.update_record(self.calen1.get(),
                                 self.get_selected_dispetcher_id(),
-                                self.get_selected_town_id(),
-                                self.get_selected_adres_id()[0]['street_id'],
-                                self.get_selected_adres_id()[0]['home_id'],
-                                self.get_selected_adres_id()[0]['padik_id'],
+                                address['goroda_id'],
+                                address['street_id'],
+                                address['home_id'],
+                                address['padik_id'],
                                 self.selected_type.get(),
-                                self.get_selected_adres_id()[0]['lifts_id'],
+                                address['lifts_id'],
                                 self.combobox_stop.get(),
                                 self.get_selected_meh_id(),
                                 self.get_selected_ispolnitel_id(),
@@ -2321,25 +2896,14 @@ class Search(tk.Toplevel):
         center_x = main_x + main_width // 2
         center_y = main_y + main_height // 2
 
-        # Размеры окна поиска
-        window_width = 600
-        window_height = 400
-
-        # Вычисляем позицию так, чтобы центр окна был в центре главного окна
-        pos_x = center_x - window_width // 2
-        pos_y = center_y - window_height // 2
-
         self.title('Поиск')
-        self.geometry(f'{window_width}x{window_height}+{pos_x}+{pos_y}')
         self.resizable(False, False)
         self.wm_attributes('-topmost', 1)
         self.transient(self.overlay)
         self.bind('<Unmap>', self.on_unmap)
         self.protocol("WM_DELETE_WINDOW", self.close_with_overlay)
 
-        toolbar_city = tk.Frame(self, borderwidth=1, relief="raised")
-        toolbar_city.pack(side=tk.LEFT, fill=tk.Y)
-
+        # Загружаем города
         try:
             with closing(self.db_manager.connect()) as connection:
                 cursor = connection.cursor(dictionary=True)
@@ -2350,6 +2914,40 @@ class Search(tk.Toplevel):
             return
 
         default_town = data_towns[0] if data_towns else ''
+        self.selected_city = default_town['город'] if default_town else ''
+
+        # Загружаем адреса заранее, чтобы определить ширину по самому длинному адресу
+        self.data_streets = []
+        address_strings = []
+        try:
+            with closing(self.db_manager.connect()) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f'''SELECT
+                                    {self.goroda}.id as goroda_id,
+                                    {self.goroda}.город,
+                                    {self.street}.id as street_id,
+                                    {self.street}.улица,
+                                    {self.doma}.id as doma_id,
+                                    {self.doma}.номер as дом,
+                                    {self.padik}.id as padik_id,
+                                    {self.padik}.номер as подъезд
+                                FROM {self.goroda}
+                                JOIN {self.street} ON {self.goroda}.id = {self.street}.id_город
+                                JOIN {self.doma} ON {self.street}.id = {self.doma}.id_улица
+                                JOIN {self.lifts} ON {self.doma}.id = {self.lifts}.id_дом
+                                JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
+                                WHERE {self.goroda}.город = '{self.selected_city}'
+                                GROUP BY {self.goroda}.id, {self.street}.улица, {self.doma}.номер, {self.padik}.номер
+                                ORDER BY {self.goroda}.id, {self.street}.улица, {self.doma}.номер, {self.padik}.номер;''')
+                self.data_streets = cursor.fetchall()
+                address_strings = [f"{d['улица']}, {d['дом']}, {d['подъезд']}" for d in self.data_streets]
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+
+        max_addr_len = max((len(s) for s in address_strings), default=30)
+
+        toolbar_city = tk.Frame(self, borderwidth=1, relief="raised")
+        toolbar_city.pack(side=tk.LEFT, fill=tk.Y)
 
         self.label_city = tk.Label(toolbar_city, borderwidth=1, width=21, relief="raised", text="Город", font='Calibri 14 bold')
         self.label_city.pack(side=tk.TOP)
@@ -2389,13 +2987,13 @@ class Search(tk.Toplevel):
 #================================================================================================================
         toolbar_addresses = tk.Frame(self, borderwidth=1, relief="raised")
         toolbar_addresses.pack(side=tk.LEFT, fill=tk.Y)
-        label_adres = tk.Label(toolbar_addresses, borderwidth=1, relief='raised', width=21, text='Адрес', font='Calibri 14 bold')
-        label_adres.pack(side=tk.TOP)
+        label_adres = tk.Label(toolbar_addresses, borderwidth=1, relief='raised', text='Адрес', font='Calibri 14 bold')
+        label_adres.pack(side=tk.TOP, fill=tk.X)
 
         toolbar6 = tk.Frame(self, borderwidth=1, relief="raised")
         toolbar6.pack(side=tk.LEFT, fill=tk.Y)
         label_data = tk.Label(toolbar6, borderwidth=1, relief='raised', width=21, text='Дата', font='Calibri 14 bold')
-        label_data.pack()
+        label_data.pack(fill=tk.X)
         label_c = tk.Label(toolbar6, text='с', font='Calibri 15 bold')
         label_c.pack()
         self.calendar1 = DateEntry(toolbar6, locale='ru_RU', font=1, date_pattern='dd.mm.yy')
@@ -2409,49 +3007,35 @@ class Search(tk.Toplevel):
 
         self.frame_search = tk.Frame(borderwidth=1)
         self.entry_text_address = tk.StringVar()
-        self.entry_for_address = tk.Entry(toolbar_addresses, textvariable=self.entry_text_address, width=33)
+        self.entry_for_address = tk.Entry(toolbar_addresses, textvariable=self.entry_text_address, width=max_addr_len)
         self.entry_for_address.bind('<KeyRelease>', self.check_input_address)
-        self.entry_for_address.pack()
+        self.entry_for_address.pack(fill=tk.X)
         self.value_addresses = tk.Variable()
 
         # Создаем горизонтальный скроллбар
         self.scrollbar_x = tk.Scrollbar(toolbar_addresses, orient=tk.HORIZONTAL)
         self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
 
-        self.listbox_addresses = tk.Listbox(toolbar_addresses, listvariable=self.value_addresses, height=15, width=25, font='Calibri 12')
+        self.listbox_addresses = tk.Listbox(toolbar_addresses, listvariable=self.value_addresses,
+                                            height=15, width=max_addr_len, font='Calibri 12')
         self.listbox_addresses.bind('<<ListboxSelect>>', self.on_change_selection_11)
-        self.listbox_addresses.pack()
+        self.listbox_addresses.pack(fill=tk.X)
         # Связываем скроллбар с Listbox
         self.listbox_addresses.config(xscrollcommand=self.scrollbar_x.set)
         self.scrollbar_x.config(command=self.listbox_addresses.xview)
-        self.selected_city = self.value_city.get()
-        try:
-            with closing(self.db_manager.connect()) as connection:
-                cursor = connection.cursor(dictionary=True)
-                cursor.execute(f'''SELECT
-                                    {self.goroda}.id as goroda_id,
-                                    {self.goroda}.город,
-                                    {self.street}.id as street_id,
-                                    {self.street}.улица,
-                                    {self.doma}.id as doma_id,
-                                    {self.doma}.номер as дом,
-                                    {self.padik}.id as padik_id,
-                                    {self.padik}.номер as подъезд
-                                FROM {self.goroda}
-                                JOIN {self.street} ON {self.goroda}.id = {self.street}.id_город
-                                JOIN {self.doma} ON {self.street}.id = {self.doma}.id_улица
-                                JOIN {self.lifts} ON {self.doma}.id = {self.lifts}.id_дом
-                                JOIN {self.padik} ON {self.lifts}.id_подъезд = {self.padik}.id
-                                WHERE {self.goroda}.город = '{self.selected_city}'
-                                GROUP BY {self.goroda}.id, {self.street}.улица, {self.doma}.номер, {self.padik}.номер
-                                ORDER BY {self.goroda}.id, {self.street}.улица, {self.doma}.номер, {self.padik}.номер;''')
-                self.data_streets = cursor.fetchall()
-                for d in self.data_streets:
-                    self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
-                    self.listbox_addresses.insert(tk.END, self.address_str)
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+
+        for addr in address_strings:
+            self.listbox_addresses.insert(tk.END, addr)
+
         self.frame_search.pack(side=tk.LEFT, anchor=tk.NW)
+
+        # Рассчитываем размер окна по содержимому и центрируем
+        self.update_idletasks()
+        window_width = self.winfo_reqwidth()
+        window_height = self.winfo_reqheight()
+        pos_x = center_x - window_width // 2
+        pos_y = center_y - window_height // 2
+        self.geometry(f'{window_width}x{window_height}+{pos_x}+{pos_y}')
         style = ttk.Style()
         # Создаем стиль для кнопки "Поиск" с зеленым цветом
         style.configure("Green.TButton", foreground="green", background="#50C878", font='Calibri 12')
@@ -2465,7 +3049,7 @@ class Search(tk.Toplevel):
         # Создание и размещение кнопки "Поиск" большого размера слева снизу
         btn_search = ttk.Button(toolbar7, text='Поиск', style="Green.TButton", command=self.close_with_overlay, width=20)
         btn_search.pack(side=tk.BOTTOM)  # Установить координаты, ширину и высоту
-        btn_search.bind('<Button-1>', lambda event: (self.view.event_of_button('search', self.value_city, self.entry_for_address.get(), self.calendar1.get(), self.calendar2.get(), self.close_with_overlay())))
+        btn_search.bind('<Button-1>', lambda event: (self.view.event_of_button('search', self.value_city.get(), self.entry_for_address.get(), self.calendar1.get(), self.calendar2.get(), self.close_with_overlay())))
 
     def on_unmap(self, event):
         self.deiconify()  # Отменяем сворачивание дочернего окна
@@ -2689,6 +3273,11 @@ class Excel():
 
 
 if __name__ == "__main__":
+    if not acquire_single_instance_lock():
+        root = tk.Tk()
+        root.withdraw()
+        mb.showwarning("Внимание", "Приложение уже запущено.")
+        sys.exit()
     time_format = "%d.%m.%y, %H:%M"
     root = tk.Tk()
     app = Main(root)

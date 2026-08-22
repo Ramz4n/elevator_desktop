@@ -45,6 +45,7 @@ class Menu_errors:
         menu.add_command(label="Ложная заявка",
                          command=lambda: self.lojnaya("На момент осмотра, лифт находился в работе"))
         menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.error("Отсутствие электроэнергии"))
+        menu.add_command(label="Эвакуация", command=lambda: self.error("Эвакуация"))
         menu.add_command(label="Скачок напряжения", command=lambda: self.error("Скачок напряжения"))
         menu.add_command(label="Пожарная сигнализация", command=lambda: self.error("Пожарная сигнализация"))
         menu.add_command(label="Вандальные действия", command=lambda: self.error("Вандальные действия"))

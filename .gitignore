@@ -1,0 +1,21 @@
+# секреты / конфигурация окружения
+config.json
+
+# дампы БД с реальными данными
+*.sql
+!schema_db.sql
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# файл-блокировка единственного экземпляра приложения
+mitol.lock
+
+# сборка PyInstaller
+build/
+dist/
+
+# IDE
+.idea/
