@@ -13,7 +13,8 @@ class DataBaseManager:
                 password=self.data['db_password'],
                 host=self.data['db_host'],
                 port=self.data['db_port'],
-                database=self.data['db_name']
+                database=self.data['db_name'],
+                connect_timeout=5
             )
         except mariadb.Error as e:
             return f"Ошибка подключения к базе данных: {e}"
@@ -42,7 +43,8 @@ class DataBaseManager:
                 user=self.data['db_user'],
                 password=self.data['db_password'],
                 host=self.data['db_host'],
-                port=self.data['db_port']
+                port=self.data['db_port'],
+                connect_timeout=5
             )
         except mariadb.Error as e:
             raise RuntimeError(f"Не удалось подключиться к серверу MariaDB: {e}")

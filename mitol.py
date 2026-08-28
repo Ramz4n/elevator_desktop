@@ -3577,6 +3577,11 @@ class Edit(tk.Toplevel):
     def __init__(self, rows):
         self.rows = rows
         super().__init__(root)
+        # Прячем окно сразу: иначе оно на мгновение показывается в
+        # непроинициализированном виде (без geometry) там, где Tk
+        # разместило его по умолчанию, и только потом "прыгает" в
+        # центр -- см. deiconify() в конце init_edit
+        self.withdraw()
         self.db_manager = DataBaseManager()
         self.tables = self.db_manager.db_tables()
         self.workers = self.tables['table_workers']
@@ -3592,6 +3597,7 @@ class Edit(tk.Toplevel):
     def init_edit(self):
         # Создаем затемняющий оверлей
         self.overlay = tk.Toplevel(root)
+        self.overlay.withdraw()  # см. комментарий у self.withdraw() в __init__
         self.overlay.attributes('-alpha', 0.8)
         self.overlay.attributes('-topmost', True)
         self.overlay.configure(bg='gray')
@@ -3606,6 +3612,7 @@ class Edit(tk.Toplevel):
         # Размещаем оверлей поверх главного окна
         self.overlay.geometry(f"{main_width}x{main_height}+{main_x}+{main_y}")
         self.overlay.overrideredirect(True)
+        self.overlay.deiconify()
 
         # Вычисляем центр главного окна
         center_x = main_x + main_width // 2
@@ -3772,6 +3779,12 @@ class Edit(tk.Toplevel):
         btn_cancel.place(x=300, y=380)
         self.btn_ok = ttk.Button(self, text='Сохранить', command=self.save_and_close)
         self.btn_ok.place(x=200, y=380)
+
+        # окно полностью готово -- теперь можно показать. Вызываем именно
+        # tk.Toplevel.deiconify, а не self.deiconify() -- ниже он
+        # переопределён и снимает withdrawn-состояние только если окно
+        # было свёрнуто (state=='iconic'), а не спрятано через withdraw()
+        tk.Toplevel.deiconify(self)
 
     def get_street_after_change_town(self, town, street=None, home=None, entrance=None, elevator=None):
         """
@@ -3990,6 +4003,11 @@ class Edit(tk.Toplevel):
 class Search(tk.Toplevel):
     def __init__(self):
         super().__init__()
+        # Прячем окно сразу: иначе оно на мгновение показывается в
+        # непроинициализированном виде (без geometry) там, где Tk
+        # разместило его по умолчанию, и только потом "прыгает" в
+        # центр -- см. tk.Toplevel.deiconify(self) в конце init_search
+        self.withdraw()
         self.db_manager = DataBaseManager()
         self.tables = self.db_manager.db_tables()
         self.workers = self.tables['table_workers']
@@ -4005,6 +4023,7 @@ class Search(tk.Toplevel):
     def init_search(self):
         # Создаем затемняющий оверлей
         self.overlay = tk.Toplevel(root)
+        self.overlay.withdraw()  # см. комментарий у self.withdraw() в __init__
         self.overlay.attributes('-alpha', 0.8)
         self.overlay.attributes('-topmost', True)
         self.overlay.configure(bg='gray')
@@ -4019,6 +4038,7 @@ class Search(tk.Toplevel):
         # Размещаем оверлей поверх главного окна
         self.overlay.geometry(f"{main_width}x{main_height}+{main_x}+{main_y}")
         self.overlay.overrideredirect(True)
+        self.overlay.deiconify()
 
         # Вычисляем центр главного окна
         center_x = main_x + main_width // 2
@@ -4039,6 +4059,10 @@ class Search(tk.Toplevel):
                 data_towns = cursor.fetchall()
         except mariadb.Error as e:
             messagebox.showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+            # Окно ещё withdraw()-нуто (см. __init__) и не будет
+            # деиконифицировано ниже -- без явной очистки затемняющий
+            # оверлей застрял бы на экране без возможности его закрыть
+            self.close_with_overlay()
             return
 
         default_town = data_towns[0] if data_towns else ''
@@ -4157,13 +4181,6 @@ class Search(tk.Toplevel):
 
         self.frame_search.pack(side=tk.LEFT, anchor=tk.NW)
 
-        # Рассчитываем размер окна по содержимому и центрируем
-        self.update_idletasks()
-        window_width = self.winfo_reqwidth()
-        window_height = self.winfo_reqheight()
-        pos_x = center_x - window_width // 2
-        pos_y = center_y - window_height // 2
-        self.geometry(f'{window_width}x{window_height}+{pos_x}+{pos_y}')
         style = ttk.Style()
         # Создаем стиль для кнопки "Поиск" с зеленым цветом
         style.configure("Green.TButton", foreground="green", background="#50C878", font='Calibri 12')
@@ -4178,6 +4195,23 @@ class Search(tk.Toplevel):
         btn_search = ttk.Button(toolbar7, text='Поиск', style="Green.TButton", command=self.close_with_overlay, width=20)
         btn_search.pack(side=tk.BOTTOM)  # Установить координаты, ширину и высоту
         btn_search.bind('<Button-1>', lambda event: (self.view.event_of_button('search', self.value_city.get(), self.entry_for_address.get(), self.calendar1.get(), self.calendar2.get(), self.close_with_overlay())))
+
+        # Рассчитываем размер окна по содержимому и центрируем
+        # (делаем это после добавления ВСЕХ виджетов, иначе окно сначала
+        # появляется меньше нужного и не по центру, а затем "прыгает" в
+        # правильное положение, когда Tk доучитывает нижнюю панель кнопок)
+        self.update_idletasks()
+        window_width = self.winfo_reqwidth()
+        window_height = self.winfo_reqheight()
+        pos_x = center_x - window_width // 2
+        pos_y = center_y - window_height // 2
+        self.geometry(f'{window_width}x{window_height}+{pos_x}+{pos_y}')
+
+        # окно полностью готово -- теперь можно показать. Вызываем именно
+        # tk.Toplevel.deiconify, а не self.deiconify() -- ниже он
+        # переопределён и снимает withdrawn-состояние только если окно
+        # было свёрнуто (state=='iconic'), а не спрятано через withdraw()
+        tk.Toplevel.deiconify(self)
 
     def on_unmap(self, event):
         self.deiconify()  # Отменяем сворачивание дочернего окна
@@ -4264,6 +4298,11 @@ class Search(tk.Toplevel):
 class Comment(tk.Toplevel):
     def __init__(self, now):
         super().__init__()
+        # Прячем окно сразу: иначе оно на мгновение показывается в
+        # непроинициализированном виде (без geometry) там, где Tk
+        # разместило его по умолчанию, и только потом "прыгает" в
+        # центр -- см. tk.Toplevel.deiconify(self) в конце init_comm
+        self.withdraw()
         self.now = now
         self.init_comm()
         self.view = app
@@ -4273,6 +4312,7 @@ class Comment(tk.Toplevel):
     def init_comm(self):
         # Создаем затемняющий оверлей
         self.overlay = tk.Toplevel(root)
+        self.overlay.withdraw()  # см. комментарий у self.withdraw() в __init__
         self.overlay.attributes('-alpha', 0.8)
         self.overlay.attributes('-topmost', True)
         self.overlay.configure(bg='gray')
@@ -4287,6 +4327,7 @@ class Comment(tk.Toplevel):
         # Размещаем оверлей поверх главного окна
         self.overlay.geometry(f"{main_width}x{main_height}+{main_x}+{main_y}")
         self.overlay.overrideredirect(True)
+        self.overlay.deiconify()
 
         # Вычисляем центр главного окна
         center_x = main_x + main_width // 2
@@ -4332,6 +4373,12 @@ class Comment(tk.Toplevel):
 
         self.t.bind("<Button-3>", self.show_menu)
         self.t.bind_all("<Control-v>", self.paste_text)
+
+        # окно полностью готово -- теперь можно показать. Вызываем именно
+        # tk.Toplevel.deiconify, а не self.deiconify() -- ниже он
+        # переопределён и снимает withdrawn-состояние только если окно
+        # было свёрнуто (state=='iconic'), а не спрятано через withdraw()
+        tk.Toplevel.deiconify(self)
 
     def on_unmap(self, event):
         self.deiconify()  # Отменяем сворачивание дочернего окна
