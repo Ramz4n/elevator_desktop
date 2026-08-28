@@ -1513,11 +1513,14 @@ class Main(tk.Frame):
                                 JOIN {self.doma} ON {self.lifts}.id_дом = {self.doma}.id
                                 JOIN {self.street} ON {self.doma}.id_улица = {self.street}.id
                                 JOIN {self.goroda} ON {self.street}.id_город = {self.goroda}.id
-                                WHERE {self.goroda}.город = "{self.selected_city}"
-                                AND {self.street}.улица = "{parts_of_address[0].strip()}"
-                                AND {self.doma}.номер = "{parts_of_address[1].strip()}"
-                                AND {self.padik}.номер = "{parts_of_address[2].strip()}"
-                                AND тип_лифта = "{self.value_type_lifts.get()}";''')
+                                WHERE {self.goroda}.город = ?
+                                AND {self.street}.улица = ?
+                                AND {self.doma}.номер = ?
+                                AND {self.padik}.номер = ?
+                                AND тип_лифта = ?;''',
+                               (self.selected_city, parts_of_address[0].strip(),
+                                parts_of_address[1].strip(), parts_of_address[2].strip(),
+                                self.value_type_lifts.get()))
                 town, street, home, entrance, lift_id = cursor.fetchone()
 
                 # 2. Получаем номер заявки (в той же транзакции — защита от гонки)
@@ -4455,6 +4458,10 @@ if __name__ == "__main__":
         sys.exit()
     time_format = "%d.%m.%y, %H:%M"
     root = tk.Tk()
+
+    from error_logger import install as _install_error_logging
+    _install_error_logging(root)
+
     try:
         # subsample -- icon.png хранится в большом разрешении (под другие
         # нужды), а не как готовая иконка 16x16/32x32; ужимаем, чтобы Tk не

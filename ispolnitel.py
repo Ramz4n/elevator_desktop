@@ -3,6 +3,14 @@ from imports import *
 class Choose_ispolnitel(tk.Toplevel):
     def __init__(self, db_manager):
         super().__init__()
+        # Прячем окно сразу: иначе оно на мгновение показывается в
+        # непроинициализированном виде (без geometry) там, где Tk
+        # разместило его по умолчанию, и только потом "прыгает" в
+        # нужное место -- см. self.deiconify() в init_ispolnitel,
+        # вызывается сразу после geometry() (grab_set() ниже не
+        # сработает на ещё скрытом окне, поэтому не откладываем
+        # deiconify до конца метода, как в Edit/Search/Comment)
+        self.withdraw()
         self.db_manager = db_manager
 
         # Получаем список механиков из БД
@@ -13,6 +21,7 @@ class Choose_ispolnitel(tk.Toplevel):
     def init_ispolnitel(self):
         # Создаем затемняющий оверлей
         self.overlay = tk.Toplevel(self.master)
+        self.overlay.withdraw()  # см. комментарий у self.withdraw() в __init__
         self.overlay.attributes('-alpha', 0.8)  # Полупрозрачность
         self.overlay.attributes('-topmost', True)
         self.overlay.configure(bg='gray')
@@ -27,16 +36,25 @@ class Choose_ispolnitel(tk.Toplevel):
         # Размещаем оверлей поверх главного окна
         self.overlay.geometry(f"{width}x{height}+{x}+{y}")
         self.overlay.overrideredirect(True)  # Убираем рамку окна
+        self.overlay.deiconify()
 
         self.title("Выбор исполнителя")
-        self.geometry("300x400+500+200")
+        # Центрируем относительно главного окна вместо фиксированного
+        # +500+200 -- иначе при нестандартном положении главного окна
+        # диалог мог открыться не по центру или вовсе за пределами экрана
+        window_width, window_height = 300, 400
+        pos_x = x + width // 2 - window_width // 2
+        pos_y = y + height // 2 - window_height // 2
+        self.geometry(f"{window_width}x{window_height}+{pos_x}+{pos_y}")
         self.resizable(False, False)
         self.attributes('-toolwindow', True)
         self.attributes('-topmost', True)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        # Делаем окно модальным
+        # Делаем окно модальным. deiconify() -- сразу, до grab_set():
+        # grab_set() не срабатывает на ещё скрытом (withdraw) окне
         self.transient(self.overlay)
+        self.deiconify()
         self.grab_set()
         self.focus_set()
 
