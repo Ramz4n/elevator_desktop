@@ -1,4 +1,5 @@
 from imports import *
+from site_users import SiteUsersWindow
 import msvcrt
 import os
 import socket
@@ -65,6 +66,7 @@ class Main(tk.Frame):
         m.add_cascade(label="Добавить", menu=add_menu)
         add_menu.add_command(label="Сотрудники", command=self.open_workers_window)
         add_menu.add_command(label="Адреса", command=self.open_addresses_window)
+        add_menu.add_command(label="Добавить пользователя на сайт", command=self.open_site_users)
         fm.add_separator()
         fm.add_command(label="Резервная копия сейчас", command=self.backup_now)
         fm.add_command(label="Восстановить из резервной копии", command=self.restore_backup_dialog)
@@ -1688,6 +1690,16 @@ class Main(tk.Frame):
 
     def open_addresses_window(self):
         AddressesWindow(self.db_manager, self.tables, on_change=self.reload_cities)
+
+    def open_site_users(self):
+        win = getattr(self, '_site_users_win', None)
+        if win is not None and win.winfo_exists():
+            win.deiconify()
+            win.lift()
+            win.focus_force()
+            return
+        data = self.db_manager.data
+        self._site_users_win = SiteUsersWindow(data.get('db_host', '127.0.0.1'), data.get('db_port', 3306))
 
     def open_shared_user_setup(self):
         SharedUserSetupWindow()
@@ -3441,6 +3453,12 @@ class SharedUserSetupWindow(tk.Toplevel):
             cur.execute(
                 f"GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES "
                 f"ON `{v['db_name']}`.* TO '{v['new_user']}'@'{v['subnet']}'"
+            )
+            # база входа на сайт: создаём под админом и даём права рабочему пользователю
+            create_site_db(cur)
+            cur.execute(
+                f"GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES "
+                f"ON `{SITE_DB_NAME}`.* TO '{v['new_user']}'@'{v['subnet']}'"
             )
             cur.execute("FLUSH PRIVILEGES")
             conn.commit()

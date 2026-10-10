@@ -1,6 +1,27 @@
 from imports import *
 
 
+SITE_DB_NAME = 'site'
+
+# База входа на сайт (только структура; пользователей сайта нужно завести отдельно,
+# хэши паролей в репозиторий не кладём).
+SITE_SCHEMA = (
+    "CREATE DATABASE IF NOT EXISTS `{db}` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin",
+    "CREATE TABLE IF NOT EXISTS `{db}`.`users` ("
+    "`id` int(11) NOT NULL AUTO_INCREMENT, "
+    "`username` varchar(50) DEFAULT NULL, "
+    "`password` varchar(255) DEFAULT NULL, "
+    "`access` varchar(1) DEFAULT NULL, "
+    "PRIMARY KEY (`id`)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin",
+)
+
+
+def create_site_db(cur, db=SITE_DB_NAME):
+    for statement in SITE_SCHEMA:
+        cur.execute(statement.format(db=db))
+
+
 class DataBaseManager:
     def __init__(self):
         with open('config.json', 'r') as file:
@@ -55,6 +76,14 @@ class DataBaseManager:
                 "CREATE DATABASE IF NOT EXISTS `{}` DEFAULT CHARACTER SET utf8mb4".format(self.data['db_name'])
             )
             conn.commit()
+
+            # БД входа на сайт: у рабочего пользователя может не быть прав на неё --
+            # это не должно мешать запуску приложения (её создаёт первый запуск под админом).
+            try:
+                create_site_db(cur)
+                conn.commit()
+            except mariadb.Error:
+                pass
 
         db_conn = self.connect()
         if isinstance(db_conn, str):
