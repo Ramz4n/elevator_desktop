@@ -40,3 +40,6 @@ add_to_sql.py
 
 # лог ошибок приложения
 errors.log*
+
+# инструкции для Claude Code, только локально
+CLAUDE.md
