@@ -4,7 +4,7 @@
 
 Веб-часть (просмотр статистики и заявок) — отдельный проект: <https://github.com/Ramz4n/elevator_web>.
 
-<img width="1920" height="1031" alt="screen2_for_readme" src="https://github.com/user-attachments/assets/c12d7799-3e0a-4d34-a01b-5bbc293c5f0b" />
+![Десктоп — журнал заявок](docs/screens/screen_for_readme.jpg)
 
 ## Возможности
 
