@@ -37,3 +37,6 @@ mitol.spec
 # разовые скрипты импорта с захардкоженными паролями
 add_passport.py
 add_to_sql.py
+
+# лог ошибок приложения
+errors.log*
